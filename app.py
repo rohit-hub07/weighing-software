@@ -1,13 +1,23 @@
 import os
 import random
+import re
+import threading
 from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox, ttk
+from urllib.parse import unquote
+
+import requests
 
 try:
     from openpyxl import Workbook, load_workbook
 except ImportError:
     raise ImportError("openpyxl is required. Install it using: pip install openpyxl")
+
+try:
+    from twilio.rest import Client
+except ImportError:
+    raise ImportError("twilio is required. Install it using: pip install twilio")
 
 
 EXCEL_FILE = "weighment_data.xlsx"
@@ -37,8 +47,8 @@ class WeighmentApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Weighment Section")
-        self.root.geometry("980x680")
-        self.root.minsize(920, 620)
+        self.root.geometry("1080x760")
+        self.root.minsize(900, 620)
 
         self.current_weight = 0
         self.gross_weight = None
@@ -61,18 +71,51 @@ class WeighmentApp:
         self.transporter_code_var = tk.StringVar()
         self.transporter_name_var = tk.StringVar()
 
+        self.twilio_sid_var = tk.StringVar(value=os.getenv("TWILIO_ACCOUNT_SID", ""))
+        self.twilio_token_var = tk.StringVar(value=os.getenv("TWILIO_AUTH_TOKEN", ""))
+        self.twilio_sms_from_var = tk.StringVar(value=os.getenv("TWILIO_SMS_FROM", ""))
+        self.twilio_whatsapp_from_var = tk.StringVar(value=os.getenv("TWILIO_WHATSAPP_FROM", ""))
+        self.sms_to_var = tk.StringVar(value=os.getenv("SMS_TO", ""))
+        self.whatsapp_to_var = tk.StringVar(value=os.getenv("WHATSAPP_TO", ""))
+        self.telegram_bot_token_var = tk.StringVar(value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
+        self.telegram_chat_id_var = tk.StringVar(value=os.getenv("TELEGRAM_CHAT_ID", ""))
+        self.message_status_var = tk.StringVar(value="Messaging: Ready")
+
         self.live_weight_var = tk.StringVar(value="00000 kg")
         self.gross_var = tk.StringVar(value="-")
         self.tare_var = tk.StringVar(value="-")
         self.net_var = tk.StringVar(value="-")
 
+        self._ensure_workbook()
         self._build_ui()
         self._update_datetime()
         self.generate_weight()
 
     def _build_ui(self) -> None:
-        container = ttk.Frame(self.root, padding=16)
-        container.pack(fill="both", expand=True)
+        outer = ttk.Frame(self.root)
+        outer.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        vscroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vscroll.set)
+
+        vscroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        container = ttk.Frame(canvas, padding=16)
+        window_id = canvas.create_window((0, 0), window=container, anchor="nw")
+
+        def _sync_scroll_region(_event=None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(window_id, width=canvas.winfo_width())
+
+        container.bind("<Configure>", _sync_scroll_region)
+        canvas.bind("<Configure>", _sync_scroll_region)
+
+        def _on_mousewheel(event) -> None:
+            canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         input_card = ttk.LabelFrame(container, text="Weighment Entry", padding=12)
         input_card.pack(fill="x")
@@ -196,6 +239,58 @@ class WeighmentApp:
             row=2, column=1, sticky="w", padx=6, pady=8
         )
 
+        messaging_card = ttk.LabelFrame(container, text="Messaging", padding=12)
+        messaging_card.pack(fill="x", pady=(10, 0))
+
+        ttk.Label(messaging_card, text="Twilio SID").grid(row=0, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.twilio_sid_var, width=36).grid(
+            row=0, column=1, sticky="w", padx=6, pady=5
+        )
+        ttk.Label(messaging_card, text="Twilio Token").grid(row=0, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.twilio_token_var, width=30, show="*").grid(
+            row=0, column=3, sticky="w", padx=6, pady=5
+        )
+
+        ttk.Label(messaging_card, text="SMS From").grid(row=1, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.twilio_sms_from_var, width=36).grid(
+            row=1, column=1, sticky="w", padx=6, pady=5
+        )
+        ttk.Label(messaging_card, text="SMS To").grid(row=1, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.sms_to_var, width=30).grid(
+            row=1, column=3, sticky="w", padx=6, pady=5
+        )
+
+        ttk.Label(messaging_card, text="WhatsApp From").grid(row=2, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.twilio_whatsapp_from_var, width=36).grid(
+            row=2, column=1, sticky="w", padx=6, pady=5
+        )
+        ttk.Label(messaging_card, text="WhatsApp To").grid(row=2, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.whatsapp_to_var, width=30).grid(
+            row=2, column=3, sticky="w", padx=6, pady=5
+        )
+
+        ttk.Label(messaging_card, text="Telegram Bot Token").grid(row=3, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.telegram_bot_token_var, width=36, show="*").grid(
+            row=3, column=1, sticky="w", padx=6, pady=5
+        )
+        ttk.Label(messaging_card, text="Telegram Chat ID").grid(row=3, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.telegram_chat_id_var, width=30).grid(
+            row=3, column=3, sticky="w", padx=6, pady=5
+        )
+
+        messaging_buttons = ttk.Frame(messaging_card)
+        messaging_buttons.grid(row=4, column=0, columnspan=4, sticky="w", padx=6, pady=(10, 2))
+
+        ttk.Button(messaging_buttons, text="Send SMS", command=self.send_sms).pack(side="left", padx=(0, 10))
+        ttk.Button(messaging_buttons, text="Send WhatsApp", command=self.send_whatsapp).pack(
+            side="left", padx=(0, 10)
+        )
+        ttk.Button(messaging_buttons, text="Send Telegram", command=self.send_telegram).pack(side="left")
+
+        ttk.Label(messaging_card, textvariable=self.message_status_var).grid(
+            row=5, column=0, columnspan=4, sticky="w", padx=6, pady=(6, 0)
+        )
+
     def _update_datetime(self) -> None:
         now = datetime.now()
         self.date_var.set(now.strftime("%d-%m-%Y"))
@@ -230,7 +325,15 @@ class WeighmentApp:
         if not os.path.exists(EXCEL_FILE):
             return 1
 
-        workbook = load_workbook(EXCEL_FILE)
+        try:
+            workbook = load_workbook(EXCEL_FILE)
+        except PermissionError:
+            messagebox.showwarning(
+                "Excel File In Use",
+                "Close weighment_data.xlsx and restart the app to update missing column headers.",
+            )
+            return
+
         sheet = workbook.active
 
         if sheet.max_row <= 1:
@@ -246,14 +349,159 @@ class WeighmentApp:
             return sheet.max_row
 
     def _ensure_workbook(self) -> None:
-        if os.path.exists(EXCEL_FILE):
+        if not os.path.exists(EXCEL_FILE):
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append(HEADERS)
+            workbook.save(EXCEL_FILE)
+            workbook.close()
             return
 
-        workbook = Workbook()
+        workbook = load_workbook(EXCEL_FILE)
         sheet = workbook.active
-        sheet.append(HEADERS)
-        workbook.save(EXCEL_FILE)
+
+        changed = False
+        for col_idx, header in enumerate(HEADERS, start=1):
+            cell = sheet.cell(row=1, column=col_idx)
+            if cell.value != header:
+                cell.value = header
+                changed = True
+
+        if changed:
+            try:
+                workbook.save(EXCEL_FILE)
+            except PermissionError:
+                messagebox.showwarning(
+                    "Excel File In Use",
+                    "Close weighment_data.xlsx and restart the app to update missing column headers.",
+                )
         workbook.close()
+
+    def _compose_message(self) -> str:
+        self.calculate_net_weight()
+        gross_text = str(self.gross_weight) if self.gross_weight is not None else "N/A"
+        tare_text = str(self.tare_weight) if self.tare_weight is not None else "N/A"
+        net_text = str(self.net_weight) if self.net_weight is not None else "N/A"
+
+        return (
+            f"Weighment Slip\n"
+            f"Serial: {self.serial_no_var.get()}\n"
+            f"Vehicle: {self.vehicle_no_var.get().strip() or 'N/A'}\n"
+            f"Date: {self.date_var.get()}  Time: {self.time_var.get()}\n"
+            f"Challan: {self.challan_var.get().strip() or 'N/A'}\n"
+            f"Customer: {self.customer_name_var.get().strip() or 'N/A'} ({self.customer_code_var.get().strip() or 'N/A'})\n"
+            f"Product: {self.product_name_var.get().strip() or 'N/A'} ({self.product_code_var.get().strip() or 'N/A'})\n"
+            f"Source: {self.source_name_var.get().strip() or 'N/A'} ({self.source_code_var.get().strip() or 'N/A'})\n"
+            f"Destination: {self.desti_name_var.get().strip() or 'N/A'} ({self.desti_code_var.get().strip() or 'N/A'})\n"
+            f"Transporter: {self.transporter_name_var.get().strip() or 'N/A'} ({self.transporter_code_var.get().strip() or 'N/A'})\n"
+            f"Gross: {gross_text} kg\n"
+            f"Tare: {tare_text} kg\n"
+            f"Net: {net_text} kg"
+        )
+
+    def _set_status(self, text: str) -> None:
+        self.root.after(0, lambda: self.message_status_var.set(text))
+
+    def _show_info(self, title: str, text: str) -> None:
+        self.root.after(0, lambda: messagebox.showinfo(title, text))
+
+    def _show_error(self, title: str, text: str) -> None:
+        self.root.after(0, lambda: messagebox.showerror(title, text))
+
+    def _run_in_background(self, send_fn, channel_name: str) -> None:
+        message_text = self._compose_message()
+
+        def _task() -> None:
+            try:
+                self._set_status(f"Messaging: Sending {channel_name}...")
+                send_fn(message_text)
+                self._set_status(f"Messaging: {channel_name} sent successfully")
+                self._show_info("Message Sent", f"{channel_name} message sent successfully.")
+            except Exception as exc:
+                self._set_status(f"Messaging: {channel_name} failed")
+                self._show_error("Messaging Error", str(exc))
+
+        threading.Thread(target=_task, daemon=True).start()
+
+    def send_sms(self) -> None:
+        sid = self.twilio_sid_var.get().strip()
+        token = self.twilio_token_var.get().strip()
+        from_number = self.twilio_sms_from_var.get().strip()
+        to_number = self.sms_to_var.get().strip()
+
+        if not all([sid, token, from_number, to_number]):
+            messagebox.showerror("Validation Error", "Fill Twilio SID, Token, SMS From and SMS To.")
+            return
+
+        def _send(message_text: str) -> None:
+            client = Client(sid, token)
+            client.messages.create(body=message_text, from_=from_number, to=to_number)
+
+        self._run_in_background(_send, "SMS")
+
+    def send_whatsapp(self) -> None:
+        sid = self.twilio_sid_var.get().strip()
+        token = self.twilio_token_var.get().strip()
+        from_number = self.twilio_whatsapp_from_var.get().strip()
+        to_number = self.whatsapp_to_var.get().strip()
+
+        if not all([sid, token, from_number, to_number]):
+            messagebox.showerror(
+                "Validation Error", "Fill Twilio SID, Token, WhatsApp From and WhatsApp To."
+            )
+            return
+
+        def _wa(number: str) -> str:
+            return number if number.startswith("whatsapp:") else f"whatsapp:{number}"
+
+        def _send(message_text: str) -> None:
+            client = Client(sid, token)
+            client.messages.create(body=message_text, from_=_wa(from_number), to=_wa(to_number))
+
+        self._run_in_background(_send, "WhatsApp")
+
+    def send_telegram(self) -> None:
+        raw_token = self.telegram_bot_token_var.get().strip()
+        raw_chat_id = self.telegram_chat_id_var.get().strip()
+
+        # Allow users to paste env-style values such as BOT_TOKEN=... and CHAT_ID=...
+        bot_token = re.sub(r"^\s*(?:TELEGRAM_)?BOT_TOKEN\s*=\s*", "", unquote(raw_token), flags=re.IGNORECASE)
+        bot_token = bot_token.strip().strip('"').strip("'").replace(" ", "")
+
+        chat_id = re.sub(r"^\s*(?:TELEGRAM_)?CHAT_ID\s*=\s*", "", unquote(raw_chat_id), flags=re.IGNORECASE)
+        chat_id = chat_id.strip().strip('"').strip("'").replace(" ", "")
+
+        if not bot_token or not chat_id:
+            messagebox.showerror("Validation Error", "Fill Telegram Bot Token and Telegram Chat ID.")
+            return
+
+        if not re.fullmatch(r"\d{6,}:[A-Za-z0-9_-]{20,}", bot_token):
+            messagebox.showerror(
+                "Validation Error",
+                "Telegram Bot Token looks invalid. Paste only the value after '=' (example: 123456789:ABC...).",
+            )
+            return
+
+        if not (chat_id.startswith("@") or re.fullmatch(r"-?\d+", chat_id)):
+            messagebox.showerror(
+                "Validation Error",
+                "Telegram Chat ID must be numeric (example: 5087327068 or -100...) or start with '@'.",
+            )
+            return
+
+        def _send(message_text: str) -> None:
+            response = requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": message_text},
+                timeout=20,
+            )
+            payload = response.json()
+            if response.status_code >= 400:
+                raise RuntimeError(payload.get("description", f"Telegram API error: HTTP {response.status_code}"))
+            if not payload.get("ok"):
+                raise RuntimeError(payload.get("description", "Telegram API returned an unknown error."))
+
+        self._run_in_background(_send, "Telegram")
 
     def save_to_excel(self) -> None:
         vehicle_no = self.vehicle_no_var.get().strip()
@@ -297,7 +545,7 @@ class WeighmentApp:
         workbook.close()
 
         messagebox.showinfo("Saved", "Weighment record saved successfully.")
-        self.clear_fields(increment_serial=True)
+        self.serial_no_var.set(str(int(self.serial_no_var.get()) + 1))
 
     def clear_fields(self, increment_serial: bool = False) -> None:
         if increment_serial:
