@@ -185,8 +185,11 @@ class WeighmentApp:
             bd=4,
         ).pack(fill="both", expand=True)
 
-        result_card = ttk.LabelFrame(weights_row, text="Captured Weights", padding=12)
-        result_card.pack(side="left", fill="both", expand=True, padx=(8, 0))
+        right_panel = ttk.Frame(weights_row)
+        right_panel.pack(side="left", fill="both", expand=True, padx=(8, 0))
+
+        result_card = ttk.LabelFrame(right_panel, text="Captured Weights", padding=12)
+        result_card.pack(fill="both", expand=True)
 
         ttk.Label(result_card, text="Gross Weight").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         ttk.Label(result_card, textvariable=self.gross_var, font=("Segoe UI", 11, "bold")).grid(
@@ -203,7 +206,7 @@ class WeighmentApp:
             row=2, column=1, sticky="w", padx=6, pady=8
         )
 
-        button_row = ttk.Frame(container, padding=(0, 12, 0, 8))
+        button_row = ttk.Frame(right_panel, padding=(0, 10, 0, 0))
         button_row.pack(fill="x")
 
         ttk.Button(button_row, text="Gross Weight", command=self.capture_gross_weight).pack(
