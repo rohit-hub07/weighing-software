@@ -1,7 +1,9 @@
 import os
 import random
 import re
+import sqlite3
 import threading
+import tempfile
 from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -10,37 +12,12 @@ from urllib.parse import unquote
 import requests
 
 try:
-    from openpyxl import Workbook, load_workbook
-except ImportError:
-    raise ImportError("openpyxl is required. Install it using: pip install openpyxl")
-
-try:
     from twilio.rest import Client
 except ImportError:
     raise ImportError("twilio is required. Install it using: pip install twilio")
 
 
-EXCEL_FILE = "weighment_data.xlsx"
-HEADERS = [
-    "Serial No",
-    "Vehicle No",
-    "Date",
-    "Time",
-    "Challan",
-    "Customer Code",
-    "Customer Name",
-    "Product Code",
-    "Product Name",
-    "Source Code",
-    "Source Name",
-    "Destination Code",
-    "Destination Name",
-    "Transporter Code",
-    "Transporter Name",
-    "Gross Weight",
-    "Tare Weight",
-    "Net Weight",
-]
+DB_FILE = "weighment_data.db"
 
 
 class WeighmentApp:
@@ -86,7 +63,7 @@ class WeighmentApp:
         self.tare_var = tk.StringVar(value="-")
         self.net_var = tk.StringVar(value="-")
 
-        self._ensure_workbook()
+        self._ensure_database()
         self._build_ui()
         self._update_datetime()
         self.generate_weight()
@@ -190,12 +167,14 @@ class WeighmentApp:
             row=7, column=3, sticky="w", padx=6, pady=6
         )
 
-        display_frame = ttk.Frame(container, padding=(0, 14, 0, 10))
-        display_frame.pack(fill="x")
+        weights_row = ttk.Frame(container, padding=(0, 14, 0, 10))
+        weights_row.pack(fill="x")
 
-        ttk.Label(display_frame, text="Live Weight", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        live_weight_card = ttk.LabelFrame(weights_row, text="Live Weight", padding=12)
+        live_weight_card.pack(side="left", fill="both", expand=True, padx=(0, 8))
+
         tk.Label(
-            display_frame,
+            live_weight_card,
             textvariable=self.live_weight_var,
             font=("Consolas", 36, "bold"),
             bg="black",
@@ -204,25 +183,10 @@ class WeighmentApp:
             pady=14,
             relief="sunken",
             bd=4,
-        ).pack(fill="x", pady=(8, 0))
+        ).pack(fill="both", expand=True)
 
-        button_row = ttk.Frame(container, padding=(0, 12, 0, 8))
-        button_row.pack(fill="x")
-
-        ttk.Button(button_row, text="Gross Weight", command=self.capture_gross_weight).pack(
-            side="left", padx=(0, 10)
-        )
-        ttk.Button(button_row, text="Tare Weight", command=self.capture_tare_weight).pack(
-            side="left", padx=(0, 10)
-        )
-        ttk.Button(button_row, text="Net Weight", command=self.calculate_net_weight).pack(
-            side="left", padx=(0, 10)
-        )
-        ttk.Button(button_row, text="Save", command=self.save_to_excel).pack(side="left", padx=(0, 10))
-        ttk.Button(button_row, text="Clear", command=self.clear_fields).pack(side="left")
-
-        result_card = ttk.LabelFrame(container, text="Captured Weights", padding=12)
-        result_card.pack(fill="x", pady=(8, 0))
+        result_card = ttk.LabelFrame(weights_row, text="Captured Weights", padding=12)
+        result_card.pack(side="left", fill="both", expand=True, padx=(8, 0))
 
         ttk.Label(result_card, text="Gross Weight").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         ttk.Label(result_card, textvariable=self.gross_var, font=("Segoe UI", 11, "bold")).grid(
@@ -238,6 +202,22 @@ class WeighmentApp:
         ttk.Label(result_card, textvariable=self.net_var, font=("Segoe UI", 11, "bold")).grid(
             row=2, column=1, sticky="w", padx=6, pady=8
         )
+
+        button_row = ttk.Frame(container, padding=(0, 12, 0, 8))
+        button_row.pack(fill="x")
+
+        ttk.Button(button_row, text="Gross Weight", command=self.capture_gross_weight).pack(
+            side="left", padx=(0, 10)
+        )
+        ttk.Button(button_row, text="Tare Weight", command=self.capture_tare_weight).pack(
+            side="left", padx=(0, 10)
+        )
+        ttk.Button(button_row, text="Net Weight", command=self.calculate_net_weight).pack(
+            side="left", padx=(0, 10)
+        )
+        ttk.Button(button_row, text="Save", command=self.save_to_db).pack(side="left", padx=(0, 10))
+        ttk.Button(button_row, text="Print", command=self.print_slip).pack(side="left", padx=(0, 10))
+        ttk.Button(button_row, text="Clear", command=self.clear_fields).pack(side="left")
 
         messaging_card = ttk.LabelFrame(container, text="Messaging", padding=12)
         messaging_card.pack(fill="x", pady=(10, 0))
@@ -291,6 +271,14 @@ class WeighmentApp:
             row=5, column=0, columnspan=4, sticky="w", padx=6, pady=(6, 0)
         )
 
+        ttk.Label(
+            container,
+            text="© Copyright Helping Hands Technologies. All Rights Reserved",
+            anchor="center",
+            justify="center",
+            font=("Segoe UI", 9),
+        ).pack(fill="x", pady=(14, 4))
+
     def _update_datetime(self) -> None:
         now = datetime.now()
         self.date_var.set(now.strftime("%d-%m-%Y"))
@@ -321,61 +309,44 @@ class WeighmentApp:
         self.net_weight = self.gross_weight - self.tare_weight
         self.net_var.set(f"{self.net_weight} kg")
 
+    def _get_db_connection(self) -> sqlite3.Connection:
+        return sqlite3.connect(DB_FILE)
+
     def _get_next_serial_no(self) -> int:
-        if not os.path.exists(EXCEL_FILE):
-            return 1
+        self._ensure_database()
+        with self._get_db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT COALESCE(MAX(serial_no), 0) + 1 FROM weighment_records")
+            return int(cursor.fetchone()[0])
 
-        try:
-            workbook = load_workbook(EXCEL_FILE)
-        except PermissionError:
-            messagebox.showwarning(
-                "Excel File In Use",
-                "Close weighment_data.xlsx and restart the app to update missing column headers.",
-            )
-            return
-
-        sheet = workbook.active
-
-        if sheet.max_row <= 1:
-            workbook.close()
-            return 1
-
-        last_serial = sheet.cell(row=sheet.max_row, column=1).value
-        workbook.close()
-
-        try:
-            return int(last_serial) + 1
-        except (TypeError, ValueError):
-            return sheet.max_row
-
-    def _ensure_workbook(self) -> None:
-        if not os.path.exists(EXCEL_FILE):
-            workbook = Workbook()
-            sheet = workbook.active
-            sheet.append(HEADERS)
-            workbook.save(EXCEL_FILE)
-            workbook.close()
-            return
-
-        workbook = load_workbook(EXCEL_FILE)
-        sheet = workbook.active
-
-        changed = False
-        for col_idx, header in enumerate(HEADERS, start=1):
-            cell = sheet.cell(row=1, column=col_idx)
-            if cell.value != header:
-                cell.value = header
-                changed = True
-
-        if changed:
-            try:
-                workbook.save(EXCEL_FILE)
-            except PermissionError:
-                messagebox.showwarning(
-                    "Excel File In Use",
-                    "Close weighment_data.xlsx and restart the app to update missing column headers.",
+    def _ensure_database(self) -> None:
+        with self._get_db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS weighment_records (
+                    serial_no INTEGER PRIMARY KEY,
+                    vehicle_no TEXT NOT NULL,
+                    weighment_date TEXT,
+                    weighment_time TEXT,
+                    challan TEXT,
+                    customer_code TEXT,
+                    customer_name TEXT,
+                    product_code TEXT,
+                    product_name TEXT,
+                    source_code TEXT,
+                    source_name TEXT,
+                    destination_code TEXT,
+                    destination_name TEXT,
+                    transporter_code TEXT,
+                    transporter_name TEXT,
+                    gross_weight INTEGER NOT NULL,
+                    tare_weight INTEGER NOT NULL,
+                    net_weight INTEGER NOT NULL
                 )
-        workbook.close()
+                """
+            )
+            connection.commit()
 
     def _compose_message(self) -> str:
         self.calculate_net_weight()
@@ -503,7 +474,7 @@ class WeighmentApp:
 
         self._run_in_background(_send, "Telegram")
 
-    def save_to_excel(self) -> None:
+    def save_to_db(self) -> None:
         vehicle_no = self.vehicle_no_var.get().strip()
         if not vehicle_no:
             messagebox.showerror("Validation Error", "Vehicle No cannot be empty.")
@@ -515,37 +486,77 @@ class WeighmentApp:
 
         self.calculate_net_weight()
 
-        self._ensure_workbook()
-        workbook = load_workbook(EXCEL_FILE)
-        sheet = workbook.active
+        self._ensure_database()
+        with self._get_db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO weighment_records (
+                    serial_no,
+                    vehicle_no,
+                    weighment_date,
+                    weighment_time,
+                    challan,
+                    customer_code,
+                    customer_name,
+                    product_code,
+                    product_name,
+                    source_code,
+                    source_name,
+                    destination_code,
+                    destination_name,
+                    transporter_code,
+                    transporter_name,
+                    gross_weight,
+                    tare_weight,
+                    net_weight
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(self.serial_no_var.get()),
+                    vehicle_no,
+                    self.date_var.get(),
+                    self.time_var.get(),
+                    self.challan_var.get().strip(),
+                    self.customer_code_var.get().strip(),
+                    self.customer_name_var.get().strip(),
+                    self.product_code_var.get().strip(),
+                    self.product_name_var.get().strip(),
+                    self.source_code_var.get().strip(),
+                    self.source_name_var.get().strip(),
+                    self.desti_code_var.get().strip(),
+                    self.desti_name_var.get().strip(),
+                    self.transporter_code_var.get().strip(),
+                    self.transporter_name_var.get().strip(),
+                    self.gross_weight,
+                    self.tare_weight,
+                    self.net_weight,
+                ),
+            )
+            connection.commit()
 
-        row = [
-            int(self.serial_no_var.get()),
-            vehicle_no,
-            self.date_var.get(),
-            self.time_var.get(),
-            self.challan_var.get().strip(),
-            self.customer_code_var.get().strip(),
-            self.customer_name_var.get().strip(),
-            self.product_code_var.get().strip(),
-            self.product_name_var.get().strip(),
-            self.source_code_var.get().strip(),
-            self.source_name_var.get().strip(),
-            self.desti_code_var.get().strip(),
-            self.desti_name_var.get().strip(),
-            self.transporter_code_var.get().strip(),
-            self.transporter_name_var.get().strip(),
-            self.gross_weight,
-            self.tare_weight,
-            self.net_weight,
-        ]
-        sheet.append(row)
-
-        workbook.save(EXCEL_FILE)
-        workbook.close()
-
-        messagebox.showinfo("Saved", "Weighment record saved successfully.")
+        messagebox.showinfo("Saved", "Weighment record saved successfully to SQLite.")
         self.serial_no_var.set(str(int(self.serial_no_var.get()) + 1))
+
+    def print_slip(self) -> None:
+        if self.gross_weight is None or self.tare_weight is None:
+            messagebox.showerror("Validation Error", "Capture both Gross and Tare weights before printing.")
+            return
+
+        slip_text = self._compose_message()
+
+        try:
+            with tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt", encoding="utf-8") as temp_file:
+                temp_file.write(slip_text)
+                temp_path = temp_file.name
+
+            if os.name == "nt":
+                os.startfile(temp_path, "print")
+                messagebox.showinfo("Print", "Print command sent to your default printer.")
+            else:
+                messagebox.showinfo("Print", f"Printing is only supported on Windows. Slip saved at: {temp_path}")
+        except Exception as exc:
+            messagebox.showerror("Print Error", f"Failed to print slip: {exc}")
 
     def clear_fields(self, increment_serial: bool = False) -> None:
         if increment_serial:
