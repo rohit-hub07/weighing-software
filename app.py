@@ -57,6 +57,9 @@ class WeighmentApp:
         self.telegram_bot_token_var = tk.StringVar(value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
         self.telegram_chat_id_var = tk.StringVar(value=os.getenv("TELEGRAM_CHAT_ID", ""))
         self.message_status_var = tk.StringVar(value="Messaging: Ready")
+        self.report_vehicle_filter_var = tk.StringVar()
+        self.report_customer_filter_var = tk.StringVar()
+        self.report_status_var = tk.StringVar(value="Report: Ready")
 
         self.live_weight_var = tk.StringVar(value="00000 kg")
         self.gross_var = tk.StringVar(value="-")
@@ -69,31 +72,33 @@ class WeighmentApp:
         self.generate_weight()
 
     def _build_ui(self) -> None:
-        outer = ttk.Frame(self.root)
+        outer = ttk.Frame(self.root, padding=10)
         outer.pack(fill="both", expand=True)
 
-        canvas = tk.Canvas(outer, highlightthickness=0)
-        vscroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vscroll.set)
+        notebook = ttk.Notebook(outer)
+        notebook.pack(fill="both", expand=True)
 
-        vscroll.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        weighment_tab = ttk.Frame(notebook, padding=12)
+        admin_tab = ttk.Frame(notebook, padding=12)
+        report_tab = ttk.Frame(notebook, padding=12)
 
-        container = ttk.Frame(canvas, padding=16)
-        window_id = canvas.create_window((0, 0), window=container, anchor="nw")
+        notebook.add(weighment_tab, text="Weighment")
+        notebook.add(admin_tab, text="Admin")
+        notebook.add(report_tab, text="Report")
 
-        def _sync_scroll_region(_event=None) -> None:
-            canvas.configure(scrollregion=canvas.bbox("all"))
-            canvas.itemconfigure(window_id, width=canvas.winfo_width())
+        self._build_weighment_tab(weighment_tab)
+        self._build_admin_tab(admin_tab)
+        self._build_report_tab(report_tab)
 
-        container.bind("<Configure>", _sync_scroll_region)
-        canvas.bind("<Configure>", _sync_scroll_region)
+        ttk.Label(
+            outer,
+            text="© Copyright Helping Hands Technologies. All Rights Reserved",
+            anchor="center",
+            justify="center",
+            font=("Segoe UI", 9),
+        ).pack(fill="x", pady=(8, 0))
 
-        def _on_mousewheel(event) -> None:
-            canvas.yview_scroll(int(-event.delta / 120), "units")
-
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
+    def _build_weighment_tab(self, container: ttk.Frame) -> None:
         input_card = ttk.LabelFrame(container, text="Weighment Entry", padding=12)
         input_card.pack(fill="x")
 
@@ -210,20 +215,27 @@ class WeighmentApp:
         button_row.pack(fill="x")
 
         ttk.Button(button_row, text="Gross Weight", command=self.capture_gross_weight).pack(
-            side="left", padx=(0, 10)
+            side="left", padx=(0, 12), pady=4
         )
         ttk.Button(button_row, text="Tare Weight", command=self.capture_tare_weight).pack(
-            side="left", padx=(0, 10)
+            side="left", padx=(0, 12), pady=4
         )
         ttk.Button(button_row, text="Net Weight", command=self.calculate_net_weight).pack(
-            side="left", padx=(0, 10)
+            side="left", padx=(0, 12), pady=4
         )
-        ttk.Button(button_row, text="Save", command=self.save_to_db).pack(side="left", padx=(0, 10))
-        ttk.Button(button_row, text="Print", command=self.print_slip).pack(side="left", padx=(0, 10))
-        ttk.Button(button_row, text="Clear", command=self.clear_fields).pack(side="left")
+        ttk.Button(button_row, text="Save", command=self.save_to_db).pack(side="left", padx=(0, 12), pady=4)
+        ttk.Button(button_row, text="Print", command=self.print_slip).pack(side="left", padx=(0, 12), pady=4)
+        ttk.Button(button_row, text="Clear", command=self.clear_fields).pack(side="left", pady=4)
 
+        self._build_messaging_section(container, pady=(10, 0))
+
+    def _build_admin_tab(self, container: ttk.Frame) -> None:
+        # Intentionally left empty for now.
+        return
+
+    def _build_messaging_section(self, container: ttk.Frame, pady: tuple[int, int] = (0, 10)) -> None:
         messaging_card = ttk.LabelFrame(container, text="Messaging", padding=12)
-        messaging_card.pack(fill="x", pady=(10, 0))
+        messaging_card.pack(fill="x", pady=pady)
 
         ttk.Label(messaging_card, text="Twilio SID").grid(row=0, column=0, sticky="w", padx=6, pady=5)
         ttk.Entry(messaging_card, textvariable=self.twilio_sid_var, width=36).grid(
@@ -264,23 +276,161 @@ class WeighmentApp:
         messaging_buttons = ttk.Frame(messaging_card)
         messaging_buttons.grid(row=4, column=0, columnspan=4, sticky="w", padx=6, pady=(10, 2))
 
-        ttk.Button(messaging_buttons, text="Send SMS", command=self.send_sms).pack(side="left", padx=(0, 10))
+        ttk.Button(messaging_buttons, text="Send SMS", command=self.send_sms).pack(side="left", padx=(0, 12), pady=4)
         ttk.Button(messaging_buttons, text="Send WhatsApp", command=self.send_whatsapp).pack(
-            side="left", padx=(0, 10)
+            side="left", padx=(0, 12), pady=4
         )
-        ttk.Button(messaging_buttons, text="Send Telegram", command=self.send_telegram).pack(side="left")
+        ttk.Button(messaging_buttons, text="Send Telegram", command=self.send_telegram).pack(side="left", pady=4)
 
         ttk.Label(messaging_card, textvariable=self.message_status_var).grid(
             row=5, column=0, columnspan=4, sticky="w", padx=6, pady=(6, 0)
         )
 
-        ttk.Label(
-            container,
-            text="© Copyright Helping Hands Technologies. All Rights Reserved",
-            anchor="center",
-            justify="center",
-            font=("Segoe UI", 9),
-        ).pack(fill="x", pady=(14, 4))
+    def _build_report_tab(self, container: ttk.Frame) -> None:
+        filters = ttk.LabelFrame(container, text="Filters", padding=10)
+        filters.pack(fill="x")
+
+        ttk.Label(filters, text="Vehicle No").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        ttk.Entry(filters, textvariable=self.report_vehicle_filter_var, width=30).grid(
+            row=0, column=1, sticky="w", padx=6, pady=6
+        )
+
+        ttk.Label(filters, text="Customer Name").grid(row=0, column=2, sticky="w", padx=6, pady=6)
+        ttk.Entry(filters, textvariable=self.report_customer_filter_var, width=30).grid(
+            row=0, column=3, sticky="w", padx=6, pady=6
+        )
+
+        ttk.Button(filters, text="Search", command=self.refresh_report_table).grid(
+            row=0, column=4, sticky="w", padx=(14, 8), pady=6
+        )
+        ttk.Button(filters, text="Clear", command=self.clear_report_filters).grid(
+            row=0, column=5, sticky="w", padx=8, pady=6
+        )
+
+        table_card = ttk.LabelFrame(container, text="Weighment Records", padding=10)
+        table_card.pack(fill="both", expand=True, pady=(10, 0))
+
+        columns = (
+            "serial_no",
+            "vehicle_no",
+            "weighment_date",
+            "weighment_time",
+            "challan",
+            "customer_code",
+            "customer_name",
+            "product_code",
+            "product_name",
+            "source_code",
+            "source_name",
+            "destination_code",
+            "destination_name",
+            "transporter_code",
+            "transporter_name",
+            "gross_weight",
+            "tare_weight",
+            "net_weight",
+        )
+        table_grid = ttk.Frame(table_card)
+        table_grid.pack(fill="both", expand=True)
+        table_grid.rowconfigure(0, weight=1)
+        table_grid.columnconfigure(0, weight=1)
+
+        self.report_tree = ttk.Treeview(table_grid, columns=columns, show="headings", height=16)
+
+        self.report_tree.heading("serial_no", text="Serial")
+        self.report_tree.heading("vehicle_no", text="Vehicle No")
+        self.report_tree.heading("weighment_date", text="Date")
+        self.report_tree.heading("weighment_time", text="Time")
+        self.report_tree.heading("challan", text="Challan")
+        self.report_tree.heading("customer_code", text="Customer Code")
+        self.report_tree.heading("customer_name", text="Customer")
+        self.report_tree.heading("product_code", text="Product Code")
+        self.report_tree.heading("product_name", text="Product Name")
+        self.report_tree.heading("source_code", text="Source Code")
+        self.report_tree.heading("source_name", text="Source Name")
+        self.report_tree.heading("destination_code", text="Destination Code")
+        self.report_tree.heading("destination_name", text="Destination Name")
+        self.report_tree.heading("transporter_code", text="Transporter Code")
+        self.report_tree.heading("transporter_name", text="Transporter Name")
+        self.report_tree.heading("gross_weight", text="Gross (kg)")
+        self.report_tree.heading("tare_weight", text="Tare (kg)")
+        self.report_tree.heading("net_weight", text="Net (kg)")
+
+        self.report_tree.column("serial_no", width=70, anchor="center")
+        self.report_tree.column("vehicle_no", width=140, anchor="center")
+        self.report_tree.column("weighment_date", width=110, anchor="center")
+        self.report_tree.column("weighment_time", width=100, anchor="center")
+        self.report_tree.column("challan", width=120, anchor="w")
+        self.report_tree.column("customer_code", width=120, anchor="w")
+        self.report_tree.column("customer_name", width=220, anchor="w")
+        self.report_tree.column("product_code", width=120, anchor="w")
+        self.report_tree.column("product_name", width=180, anchor="w")
+        self.report_tree.column("source_code", width=120, anchor="w")
+        self.report_tree.column("source_name", width=180, anchor="w")
+        self.report_tree.column("destination_code", width=140, anchor="w")
+        self.report_tree.column("destination_name", width=180, anchor="w")
+        self.report_tree.column("transporter_code", width=140, anchor="w")
+        self.report_tree.column("transporter_name", width=180, anchor="w")
+        self.report_tree.column("gross_weight", width=90, anchor="e")
+        self.report_tree.column("tare_weight", width=90, anchor="e")
+        self.report_tree.column("net_weight", width=90, anchor="e")
+
+        yscroll = ttk.Scrollbar(table_grid, orient="vertical", command=self.report_tree.yview)
+        xscroll = ttk.Scrollbar(table_grid, orient="horizontal", command=self.report_tree.xview)
+        self.report_tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+
+        self.report_tree.grid(row=0, column=0, sticky="nsew")
+        yscroll.grid(row=0, column=1, sticky="ns")
+        xscroll.grid(row=1, column=0, sticky="ew")
+
+        def _on_tree_mousewheel(event) -> None:
+            self.report_tree.yview_scroll(int(-event.delta / 120), "units")
+
+        def _on_tree_shift_mousewheel(event) -> None:
+            self.report_tree.xview_scroll(int(-event.delta / 120), "units")
+
+        self.report_tree.bind("<MouseWheel>", _on_tree_mousewheel)
+        self.report_tree.bind("<Shift-MouseWheel>", _on_tree_shift_mousewheel)
+
+        ttk.Label(container, textvariable=self.report_status_var).pack(fill="x", pady=(8, 0))
+        self.refresh_report_table()
+
+    def _fetch_report_rows(self, vehicle_filter: str = "", customer_filter: str = "") -> list[tuple]:
+        query = (
+            "SELECT serial_no, vehicle_no, weighment_date, weighment_time, challan, customer_code, "
+            "customer_name, product_code, product_name, source_code, source_name, destination_code, "
+            "destination_name, transporter_code, transporter_name, gross_weight, tare_weight, net_weight "
+            "FROM weighment_records "
+            "WHERE LOWER(vehicle_no) LIKE ? AND LOWER(customer_name) LIKE ? "
+            "ORDER BY serial_no DESC"
+        )
+        vehicle_param = f"%{vehicle_filter.lower()}%"
+        customer_param = f"%{customer_filter.lower()}%"
+
+        with self._get_db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(query, (vehicle_param, customer_param))
+            return cursor.fetchall()
+
+    def refresh_report_table(self) -> None:
+        if not hasattr(self, "report_tree"):
+            return
+
+        vehicle_filter = self.report_vehicle_filter_var.get().strip()
+        customer_filter = self.report_customer_filter_var.get().strip()
+
+        rows = self._fetch_report_rows(vehicle_filter=vehicle_filter, customer_filter=customer_filter)
+        self.report_tree.delete(*self.report_tree.get_children())
+
+        for row in rows:
+            self.report_tree.insert("", "end", values=row)
+
+        self.report_status_var.set(f"Report: {len(rows)} record(s) found")
+
+    def clear_report_filters(self) -> None:
+        self.report_vehicle_filter_var.set("")
+        self.report_customer_filter_var.set("")
+        self.refresh_report_table()
 
     def _update_datetime(self) -> None:
         now = datetime.now()
@@ -540,6 +690,7 @@ class WeighmentApp:
 
         messagebox.showinfo("Saved", "Weighment record saved successfully to SQLite.")
         self.serial_no_var.set(str(int(self.serial_no_var.get()) + 1))
+        self.refresh_report_table()
 
     def print_slip(self) -> None:
         if self.gross_weight is None or self.tare_weight is None:
