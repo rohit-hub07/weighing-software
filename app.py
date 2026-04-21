@@ -59,6 +59,7 @@ class WeighmentApp:
         self.message_status_var = tk.StringVar(value="Messaging: Ready")
         self.report_vehicle_filter_var = tk.StringVar()
         self.report_customer_filter_var = tk.StringVar()
+        self.report_date_filter_var = tk.StringVar()
         self.report_status_var = tk.StringVar(value="Report: Ready")
 
         self.live_weight_var = tk.StringVar(value="00000 kg")
@@ -300,11 +301,16 @@ class WeighmentApp:
             row=0, column=3, sticky="w", padx=6, pady=6
         )
 
+        ttk.Label(filters, text="Date (DD-MM-YYYY)").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+        ttk.Entry(filters, textvariable=self.report_date_filter_var, width=30).grid(
+            row=1, column=1, sticky="w", padx=6, pady=6
+        )
+
         ttk.Button(filters, text="Search", command=self.refresh_report_table).grid(
-            row=0, column=4, sticky="w", padx=(14, 8), pady=6
+            row=0, column=4, rowspan=2, sticky="w", padx=(14, 8), pady=6
         )
         ttk.Button(filters, text="Clear", command=self.clear_report_filters).grid(
-            row=0, column=5, sticky="w", padx=8, pady=6
+            row=0, column=5, rowspan=2, sticky="w", padx=8, pady=6
         )
 
         table_card = ttk.LabelFrame(container, text="Weighment Records", padding=10)
@@ -395,21 +401,27 @@ class WeighmentApp:
         ttk.Label(container, textvariable=self.report_status_var).pack(fill="x", pady=(8, 0))
         self.refresh_report_table()
 
-    def _fetch_report_rows(self, vehicle_filter: str = "", customer_filter: str = "") -> list[tuple]:
+    def _fetch_report_rows(
+        self,
+        vehicle_filter: str = "",
+        customer_filter: str = "",
+        date_filter: str = "",
+    ) -> list[tuple]:
         query = (
             "SELECT serial_no, vehicle_no, weighment_date, weighment_time, challan, customer_code, "
             "customer_name, product_code, product_name, source_code, source_name, destination_code, "
             "destination_name, transporter_code, transporter_name, gross_weight, tare_weight, net_weight "
             "FROM weighment_records "
-            "WHERE LOWER(vehicle_no) LIKE ? AND LOWER(customer_name) LIKE ? "
+            "WHERE LOWER(vehicle_no) LIKE ? AND LOWER(customer_name) LIKE ? AND weighment_date LIKE ? "
             "ORDER BY serial_no DESC"
         )
         vehicle_param = f"%{vehicle_filter.lower()}%"
         customer_param = f"%{customer_filter.lower()}%"
+        date_param = f"%{date_filter}%"
 
         with self._get_db_connection() as connection:
             cursor = connection.cursor()
-            cursor.execute(query, (vehicle_param, customer_param))
+            cursor.execute(query, (vehicle_param, customer_param, date_param))
             return cursor.fetchall()
 
     def refresh_report_table(self) -> None:
@@ -418,8 +430,13 @@ class WeighmentApp:
 
         vehicle_filter = self.report_vehicle_filter_var.get().strip()
         customer_filter = self.report_customer_filter_var.get().strip()
+        date_filter = self.report_date_filter_var.get().strip()
 
-        rows = self._fetch_report_rows(vehicle_filter=vehicle_filter, customer_filter=customer_filter)
+        rows = self._fetch_report_rows(
+            vehicle_filter=vehicle_filter,
+            customer_filter=customer_filter,
+            date_filter=date_filter,
+        )
         self.report_tree.delete(*self.report_tree.get_children())
 
         for row in rows:
@@ -430,6 +447,7 @@ class WeighmentApp:
     def clear_report_filters(self) -> None:
         self.report_vehicle_filter_var.set("")
         self.report_customer_filter_var.set("")
+        self.report_date_filter_var.set("")
         self.refresh_report_table()
 
     def _update_datetime(self) -> None:
