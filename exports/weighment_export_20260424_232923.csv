@@ -1,0 +1,5 @@
+serial_no,vehicle_no,weighment_date,weighment_time,challan,customer_code,customer_name,product_code,product_name,source_code,source_name,destination_code,destination_name,transporter_code,transporter_name,gross_weight,tare_weight,net_weight
+4,mnn,21-04-2026,20:18:27,mm,mm,mm,mm,mm,jj,mm,nn,mm,mm,mm,1056,7963,-6907
+3,ckggdd,17-04-2026,19:21:22,ouhd,dddduihd,ddud,duhdu,udu,dd,dd,dd,dd,dd,dd,8832,16447,-7615
+2,ckggdd,17-04-2026,19:13:11,ouhd,dddduihd,ddud,duhdu,udu,dd,dd,dd,dd,dd,dd,8832,16447,-7615
+1,kdj,17-04-2026,00:00:55,kjd,dd,dd,dd,dd,dd,dd,dd,dd,dd,dd,34956,45993,-11037
