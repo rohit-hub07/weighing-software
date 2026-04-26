@@ -4,11 +4,12 @@ import re
 import sqlite3
 import threading
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 import tkinter as tk
 from tkinter import messagebox, ttk
 from urllib.parse import unquote
 
+import bcrypt
 import requests
 from admin_tab import AdminTab
 from report_tab import ReportTab
@@ -20,6 +21,10 @@ except ImportError:
 
 
 DB_FILE = "weighment_data.db"
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "Admin@123"
+DEFAULT_USER_USERNAME = "operator"
+DEFAULT_USER_PASSWORD = "User@123"
 
 
 class WeighmentApp:
@@ -33,6 +38,16 @@ class WeighmentApp:
         self.gross_weight = None
         self.tare_weight = None
         self.net_weight = None
+
+        self.session_user: str | None = None
+        self.session_user_id: int | None = None
+        self.session_role: str | None = None
+        self.session_status_var = tk.StringVar(value="Not logged in")
+        self.subscription_info_var = tk.StringVar(value="")
+        self.login_username_var = tk.StringVar()
+        self.login_password_var = tk.StringVar()
+        self.subscription_warning_shown = False
+        self.last_subscription_check: datetime | None = None
 
         self.serial_no_var = tk.StringVar(value=str(self._get_next_serial_no()))
         self.vehicle_no_var = tk.StringVar()
@@ -65,30 +80,387 @@ class WeighmentApp:
         self.tare_var = tk.StringVar(value="-")
         self.net_var = tk.StringVar(value="-")
 
+        self.notebook: ttk.Notebook | None = None
+        self.weighment_frame: ttk.Frame | None = None
+        self.admin_frame: ttk.Frame | None = None
+        self.report_frame: ttk.Frame | None = None
+
         self._ensure_database()
         self._load_saved_messaging_settings()
-        self._build_ui()
+        self._show_login_screen()
         self._update_datetime()
         self.generate_weight()
 
-    def _build_ui(self) -> None:
+    def _show_login_screen(self) -> None:
+        self._clear_root()
+        self.root.title("Weighment Section - Login")
+
+        wrapper = ttk.Frame(self.root, padding=18)
+        wrapper.pack(fill="both", expand=True)
+
+        card = ttk.LabelFrame(wrapper, text="Login", padding=16)
+        card.place(relx=0.5, rely=0.5, anchor="center")
+
+        ttk.Label(card, text="Username").grid(row=0, column=0, sticky="w", padx=6, pady=8)
+        username_entry = ttk.Entry(card, textvariable=self.login_username_var, width=32)
+        username_entry.grid(row=0, column=1, sticky="w", padx=6, pady=8)
+
+        ttk.Label(card, text="Password").grid(row=1, column=0, sticky="w", padx=6, pady=8)
+        password_entry = ttk.Entry(card, textvariable=self.login_password_var, show="*", width=32)
+        password_entry.grid(row=1, column=1, sticky="w", padx=6, pady=8)
+
+        ttk.Button(card, text="Login", command=self.login).grid(row=2, column=0, columnspan=2, pady=(10, 4))
+        ttk.Label(
+            card,
+            text="Default accounts: admin/Admin@123 and operator/User@123",
+            foreground="#555555",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 2))
+
+        password_entry.bind("<Return>", lambda _e: self.login())
+        username_entry.focus_set()
+
+    def _clear_root(self) -> None:
+        for child in self.root.winfo_children():
+            child.destroy()
+
+    def login(self) -> None:
+        username = self.login_username_var.get().strip()
+        password = self.login_password_var.get().strip()
+
+        if not username or not password:
+            messagebox.showerror("Login Error", "Username and password are required.")
+            return
+
+        role = None
+        if self._authenticate("admins", username, password):
+            role = "admin"
+        else:
+            user = self._get_user_with_subscription(username)
+            if user and bcrypt.checkpw(password.encode("utf-8"), user["password"].encode("utf-8")):
+                self._refresh_user_subscription_status(user["user_id"])
+                user = self._get_user_with_subscription(username)
+
+                if user and user["subscription_status"] == "active":
+                    role = "user"
+                    self.session_user_id = int(user["user_id"])
+                    self.subscription_warning_shown = False
+                    self.last_subscription_check = None
+
+                    end_date = datetime.strptime(user["subscription_end"], "%Y-%m-%d").date()
+                    remaining_days = (end_date - datetime.now().date()).days
+                    self.subscription_info_var.set(f"Subscription active: {remaining_days} day(s) remaining")
+                    if remaining_days <= 7:
+                        messagebox.showwarning(
+                            "Subscription Warning",
+                            f"Your subscription will expire in {remaining_days} day(s).",
+                        )
+                else:
+                    messagebox.showerror("Access Denied", "Subscription expired. Please contact admin.")
+                    return
+
+        if not role:
+            messagebox.showerror("Login Error", "Invalid username or password.")
+            return
+
+        self.session_user = username
+        self.session_role = role
+        if role == "admin":
+            self.session_user_id = None
+            self.subscription_info_var.set("Admin access: unrestricted")
+        self.session_status_var.set(f"Logged in as {username} ({role})")
+        self.login_password_var.set("")
+        self._build_ui()
+
+    def logout(self) -> None:
+        if not self.session_user:
+            return
+
+        if not messagebox.askyesno("Logout", "Are you sure you want to logout?"):
+            return
+
+        self.session_user = None
+        self.session_user_id = None
+        self.session_role = None
+        self.session_status_var.set("Not logged in")
+        self.subscription_info_var.set("")
+        self.subscription_warning_shown = False
+        self.last_subscription_check = None
+        self.clear_fields()
+        self._show_login_screen()
+
+    def _force_logout_due_subscription_expiry(self) -> None:
+        self.session_user = None
+        self.session_user_id = None
+        self.session_role = None
+        self.session_status_var.set("Not logged in")
+        self.subscription_info_var.set("")
+        self.subscription_warning_shown = False
+        self.last_subscription_check = None
+        self.clear_fields()
+        self._show_login_screen()
+
+    def _refresh_current_user_subscription_state(self) -> None:
+        if self.session_role != "user" or not self.session_user_id:
+            return
+
+        now = datetime.now()
+        if self.last_subscription_check and (now - self.last_subscription_check).total_seconds() < 30:
+            return
+        self.last_subscription_check = now
+
+        with self._get_db_connection(system=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT start_date, end_date, status FROM subscriptions WHERE user_id = ?",
+                (self.session_user_id,),
+            )
+            row = cursor.fetchone()
+
+        if not row:
+            return
+
+        end_date = datetime.strptime(row[1], "%Y-%m-%d").date()
+        remaining_days = (end_date - now.date()).days
+        self.subscription_info_var.set(f"Subscription active: {remaining_days} day(s) remaining")
+
+        if remaining_days <= 7 and not self.subscription_warning_shown:
+            self.subscription_warning_shown = True
+            self._show_error("Subscription Warning", f"Your subscription will expire in {remaining_days} day(s).")
+
+        if row[2] != "active" or remaining_days < 0:
+            with self._get_db_connection(system=True) as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "UPDATE subscriptions SET status = 'expired' WHERE user_id = ?",
+                    (self.session_user_id,),
+                )
+                connection.commit()
+
+            self._show_error("Access Denied", "Subscription expired. Please contact admin.")
+            self._force_logout_due_subscription_expiry()
+
+    def _get_user_with_subscription(self, username: str) -> dict | None:
+        with self._get_db_connection(system=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT u.id, u.username, u.password, s.start_date, s.end_date, s.status
+                FROM users u
+                LEFT JOIN subscriptions s ON s.user_id = u.id
+                WHERE u.username = ?
+                """,
+                (username,),
+            )
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        if row[3] is None or row[4] is None or row[5] is None:
+            self._create_default_subscription_for_user(int(row[0]))
+            return self._get_user_with_subscription(username)
+
+        return {
+            "user_id": row[0],
+            "username": row[1],
+            "password": row[2],
+            "subscription_start": row[3],
+            "subscription_end": row[4],
+            "subscription_status": row[5],
+        }
+
+    def _create_default_subscription_for_user(self, user_id: int) -> None:
+        start_date = datetime.now().date()
+        end_date = start_date + timedelta(days=365)
+        with self._get_db_connection(system=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO subscriptions (user_id, start_date, end_date, status)
+                VALUES (?, ?, ?, 'active')
+                """,
+                (user_id, start_date.isoformat(), end_date.isoformat()),
+            )
+            connection.commit()
+
+    def _refresh_user_subscription_status(self, user_id: int) -> None:
+        today = datetime.now().date().isoformat()
+        with self._get_db_connection(system=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE subscriptions
+                SET status = CASE
+                    WHEN date(end_date) < date(?) THEN 'expired'
+                    ELSE status
+                END
+                WHERE user_id = ?
+                """,
+                (today, user_id),
+            )
+            connection.commit()
+
+    def refresh_all_subscription_statuses(self) -> None:
+        today = datetime.now().date().isoformat()
+        with self._get_db_connection(system=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE subscriptions
+                SET status = CASE
+                    WHEN date(end_date) < date(?) THEN 'expired'
+                    ELSE status
+                END
+                """,
+                (today,),
+            )
+            connection.commit()
+
+    def is_admin_authenticated(self) -> bool:
+        return self.session_role == "admin"
+
+    def _authenticate(self, table_name: str, username: str, password: str) -> bool:
+        if table_name not in {"users", "admins"}:
+            return False
+
+        with self._get_db_connection(system=True) as connection:
+            cursor = connection.cursor()
+            cursor.execute(f"SELECT password FROM {table_name} WHERE username = ?", (username,))
+            row = cursor.fetchone()
+
+        if not row:
+            return False
+
+        try:
+            return bcrypt.checkpw(password.encode("utf-8"), row[0].encode("utf-8"))
+        except ValueError:
+            return False
+
+    def _admin_reauthentication_dialog(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Admin Authentication")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        username_var = tk.StringVar()
+        password_var = tk.StringVar()
+
+        frame = ttk.Frame(dialog, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Admin username").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        user_entry = ttk.Entry(frame, textvariable=username_var, width=30)
+        user_entry.grid(row=0, column=1, sticky="w", padx=6, pady=6)
+
+        ttk.Label(frame, text="Admin password").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+        pass_entry = ttk.Entry(frame, textvariable=password_var, show="*", width=30)
+        pass_entry.grid(row=1, column=1, sticky="w", padx=6, pady=6)
+
+        def _do_auth() -> None:
+            username = username_var.get().strip()
+            password = password_var.get().strip()
+            if not username or not password:
+                messagebox.showerror("Auth Error", "Admin username and password are required.", parent=dialog)
+                return
+
+            if not self._authenticate("admins", username, password):
+                messagebox.showerror("Auth Error", "Invalid admin credentials.", parent=dialog)
+                return
+
+            self.session_user = username
+            self.session_role = "admin"
+            self.session_status_var.set(f"Logged in as {username} (admin)")
+            dialog.destroy()
+            self._build_ui(select_admin=True)
+            messagebox.showinfo("Authenticated", "Admin access granted.")
+
+        action_row = ttk.Frame(frame)
+        action_row.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 4))
+        ttk.Button(action_row, text="Authenticate", command=_do_auth).pack(side="left", padx=(0, 10))
+        ttk.Button(action_row, text="Cancel", command=dialog.destroy).pack(side="left")
+
+        pass_entry.bind("<Return>", lambda _e: _do_auth())
+        user_entry.focus_set()
+
+    def _build_admin_locked_tab(self, container: ttk.Frame) -> None:
+        card = ttk.LabelFrame(container, text="Admin Access Required", padding=18)
+        card.pack(fill="both", expand=True, padx=10, pady=10)
+
+        ttk.Label(
+            card,
+            text=(
+                "Admin data is protected. To access admin dashboard, "
+                "authenticate with admin credentials."
+            ),
+            wraplength=500,
+        ).pack(anchor="w", pady=(0, 10))
+
+        ttk.Button(card, text="Login as Admin", command=self._admin_reauthentication_dialog).pack(anchor="w")
+
+    def _sqlite_authorizer(self, action, arg1, _arg2, _db_name, _trigger_name) -> int:
+        restricted_tables = {"admins", "subscriptions"}
+        table_name = (arg1 or "").lower()
+        blocked_actions = {
+            sqlite3.SQLITE_READ,
+            sqlite3.SQLITE_INSERT,
+            sqlite3.SQLITE_UPDATE,
+            sqlite3.SQLITE_DELETE,
+            sqlite3.SQLITE_DROP_TABLE,
+            sqlite3.SQLITE_ALTER_TABLE,
+        }
+
+        if self.session_role != "admin" and table_name in restricted_tables and action in blocked_actions:
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    def _build_ui(self, select_admin: bool = False) -> None:
+        if not self.session_user:
+            self._show_login_screen()
+            return
+
+        self._clear_root()
+        self.root.title("Weighment Section")
+
         outer = ttk.Frame(self.root, padding=10)
         outer.pack(fill="both", expand=True)
 
+        header = ttk.Frame(outer)
+        header.pack(fill="x", pady=(0, 6))
+
+        ttk.Label(header, textvariable=self.session_status_var).pack(side="left")
+        if self.session_role == "user":
+            ttk.Label(header, textvariable=self.subscription_info_var).pack(side="left", padx=(14, 0))
+        if self.session_role != "admin":
+            ttk.Button(header, text="Admin Login", command=self._admin_reauthentication_dialog).pack(
+                side="right", padx=(8, 0)
+            )
+        ttk.Button(header, text="Logout", command=self.logout).pack(side="right")
+
         notebook = ttk.Notebook(outer)
         notebook.pack(fill="both", expand=True)
+        self.notebook = notebook
 
         weighment_tab = ttk.Frame(notebook, padding=12)
         admin_tab = ttk.Frame(notebook, padding=12)
         report_tab = ttk.Frame(notebook, padding=12)
+        self.weighment_frame = weighment_tab
+        self.admin_frame = admin_tab
+        self.report_frame = report_tab
 
         notebook.add(weighment_tab, text="Weighment")
         notebook.add(admin_tab, text="Admin")
         notebook.add(report_tab, text="Report")
 
         self._build_weighment_tab(weighment_tab)
-        self._build_admin_tab(admin_tab)
+        if self.session_role == "admin":
+            self._build_admin_tab(admin_tab)
+        else:
+            self._build_admin_locked_tab(admin_tab)
         self._build_report_tab(report_tab)
+
+        if select_admin:
+            notebook.select(admin_tab)
 
         ttk.Label(
             outer,
@@ -230,10 +602,16 @@ class WeighmentApp:
         self._build_messaging_actions(container, pady=(10, 0))
 
     def _build_admin_tab(self, container: ttk.Frame) -> None:
+        if self.session_role != "admin":
+            self._build_admin_locked_tab(container)
+            return
+
         self.admin_tab = AdminTab(
             container=container,
             get_db_connection=self._get_db_connection,
             db_file=DB_FILE,
+            is_admin_fn=self.is_admin_authenticated,
+            refresh_subscriptions_fn=self.refresh_all_subscription_statuses,
             save_credentials_fn=self._save_messaging_settings,
             messaging_vars={
                 "twilio_sid": self.twilio_sid_var,
@@ -285,6 +663,7 @@ class WeighmentApp:
         now = datetime.now()
         self.date_var.set(now.strftime("%d-%m-%Y"))
         self.time_var.set(now.strftime("%H:%M:%S"))
+        self._refresh_current_user_subscription_state()
         self.root.after(1000, self._update_datetime)
 
     def generate_weight(self) -> None:
@@ -311,18 +690,22 @@ class WeighmentApp:
         self.net_weight = self.gross_weight - self.tare_weight
         self.net_var.set(f"{self.net_weight} kg")
 
-    def _get_db_connection(self) -> sqlite3.Connection:
-        return sqlite3.connect(DB_FILE)
+    def _get_db_connection(self, system: bool = False) -> sqlite3.Connection:
+        connection = sqlite3.connect(DB_FILE)
+        connection.execute("PRAGMA foreign_keys = ON")
+        if not system:
+            connection.set_authorizer(self._sqlite_authorizer)
+        return connection
 
     def _get_next_serial_no(self) -> int:
         self._ensure_database()
-        with self._get_db_connection() as connection:
+        with self._get_db_connection(system=True) as connection:
             cursor = connection.cursor()
             cursor.execute("SELECT COALESCE(MAX(serial_no), 0) + 1 FROM weighment_records")
             return int(cursor.fetchone()[0])
 
     def _ensure_database(self) -> None:
-        with self._get_db_connection() as connection:
+        with self._get_db_connection(system=True) as connection:
             cursor = connection.cursor()
             cursor.execute(
                 """
@@ -356,7 +739,70 @@ class WeighmentApp:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS admins (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    start_date TEXT NOT NULL,
+                    end_date TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('active', 'expired')),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+                """
+            )
+
+            self._seed_default_accounts(cursor)
+            self._seed_default_subscriptions(cursor)
             connection.commit()
+
+        self.refresh_all_subscription_statuses()
+
+    def _seed_default_accounts(self, cursor: sqlite3.Cursor) -> None:
+        admin_hash = bcrypt.hashpw(DEFAULT_ADMIN_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        user_hash = bcrypt.hashpw(DEFAULT_USER_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+        cursor.execute(
+            "INSERT OR IGNORE INTO admins (username, password) VALUES (?, ?)",
+            (DEFAULT_ADMIN_USERNAME, admin_hash),
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)",
+            (DEFAULT_USER_USERNAME, user_hash),
+        )
+
+    def _seed_default_subscriptions(self, cursor: sqlite3.Cursor) -> None:
+        start_date = datetime.now().date()
+        end_date = start_date + timedelta(days=365)
+        cursor.execute("SELECT id FROM users")
+        user_ids = [row[0] for row in cursor.fetchall()]
+
+        for user_id in user_ids:
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO subscriptions (user_id, start_date, end_date, status)
+                VALUES (?, ?, ?, 'active')
+                """,
+                (user_id, start_date.isoformat(), end_date.isoformat()),
+            )
 
     def _messaging_settings(self) -> dict[str, tk.StringVar]:
         return {
@@ -371,6 +817,10 @@ class WeighmentApp:
         }
 
     def _save_messaging_settings(self) -> bool:
+        if self.session_role != "admin":
+            self._show_error("Access Denied", "Admin authentication is required to save messaging credentials.")
+            return False
+
         try:
             settings_payload = [(key, var.get().strip()) for key, var in self._messaging_settings().items()]
             with self._get_db_connection() as connection:
