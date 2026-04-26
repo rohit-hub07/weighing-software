@@ -110,11 +110,6 @@ class WeighmentApp:
         password_entry.grid(row=1, column=1, sticky="w", padx=6, pady=8)
 
         ttk.Button(card, text="Login", command=self.login).grid(row=2, column=0, columnspan=2, pady=(10, 4))
-        ttk.Label(
-            card,
-            text="Default accounts: admin/Admin@123 and operator/User@123",
-            foreground="#555555",
-        ).grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 2))
 
         password_entry.bind("<Return>", lambda _e: self.login())
         username_entry.focus_set()
