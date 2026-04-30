@@ -11,6 +11,7 @@ from urllib.parse import unquote
 
 import bcrypt
 import requests
+from PIL import Image, ImageTk
 from admin_tab import AdminTab
 from report_tab import ReportTab
 
@@ -48,6 +49,11 @@ class WeighmentApp:
         self.login_password_var = tk.StringVar()
         self.subscription_warning_shown = False
         self.last_subscription_check: datetime | None = None
+        self.login_background_image = None
+        self.login_background_photo = None
+        self.login_background_window = None
+        self.login_card_window = None
+        self.login_canvas = None
 
         self.serial_no_var = tk.StringVar(value=str(self._get_next_serial_no()))
         self.vehicle_no_var = tk.StringVar()
@@ -91,15 +97,32 @@ class WeighmentApp:
         self._update_datetime()
         self.generate_weight()
 
-    def _show_login_screen(self) -> None:
+    def _show_login_screen(self, use_background: bool = True) -> None:
         self._clear_root()
         self.root.title("Weighment Section - Login")
 
-        wrapper = ttk.Frame(self.root, padding=18)
+        self.login_background_window = None
+        self.login_card_window = None
+        self.login_canvas = None
+
+        background_color = "#111827" if use_background else "#ffffff"
+        wrapper = tk.Frame(self.root, bg=background_color)
         wrapper.pack(fill="both", expand=True)
 
-        card = ttk.LabelFrame(wrapper, text="Login", padding=16)
-        card.place(relx=0.5, rely=0.5, anchor="center")
+        self.login_canvas = tk.Canvas(wrapper, highlightthickness=0, bd=0, bg=background_color)
+        self.login_canvas.pack(fill="both", expand=True)
+        self.login_canvas.bind("<Configure>", self._update_login_background)
+
+        if use_background:
+            background_path = self._get_login_background_path()
+            if background_path:
+                self._load_login_background(background_path)
+        else:
+            self.login_background_image = None
+            self.login_background_photo = None
+
+        card = ttk.LabelFrame(self.login_canvas, text="Login", padding=16)
+        self.login_card_window = self.login_canvas.create_window(0, 0, window=card, anchor="center")
 
         ttk.Label(card, text="Username").grid(row=0, column=0, sticky="w", padx=6, pady=8)
         username_entry = ttk.Entry(card, textvariable=self.login_username_var, width=32)
@@ -113,6 +136,67 @@ class WeighmentApp:
 
         password_entry.bind("<Return>", lambda _e: self.login())
         username_entry.focus_set()
+        self._update_login_background()
+
+    def _get_login_background_path(self) -> str | None:
+        image_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "assets",
+            "images",
+            "weighing_bridge_img.jpeg",
+        )
+        return image_path if os.path.exists(image_path) else None
+
+    def _load_login_background(self, image_path: str) -> None:
+        try:
+            self.login_background_image = Image.open(image_path)
+        except Exception:
+            self.login_background_image = None
+
+    def _update_login_background(self, event: tk.Event | None = None) -> None:
+        if not self.login_canvas:
+            return
+
+        canvas_width = max(1, self.login_canvas.winfo_width())
+        canvas_height = max(1, self.login_canvas.winfo_height())
+
+        if self.login_background_image is not None:
+            image = self.login_background_image.copy()
+            image_ratio = image.width / image.height
+            canvas_ratio = canvas_width / canvas_height
+
+            if canvas_ratio > image_ratio:
+                new_width = canvas_width
+                new_height = max(1, int(canvas_width / image_ratio))
+            else:
+                new_height = canvas_height
+                new_width = max(1, int(canvas_height * image_ratio))
+
+            image = image.resize((new_width, new_height), Image.LANCZOS)
+            self.login_background_photo = ImageTk.PhotoImage(image)
+
+            if self.login_background_window is None:
+                self.login_background_window = self.login_canvas.create_image(
+                    0,
+                    0,
+                    image=self.login_background_photo,
+                    anchor="nw",
+                )
+            else:
+                self.login_canvas.itemconfigure(self.login_background_window, image=self.login_background_photo)
+
+            self.login_canvas.tag_lower(self.login_background_window)
+            self.login_canvas.coords(
+                self.login_background_window,
+                (canvas_width - new_width) // 2,
+                (canvas_height - new_height) // 2,
+            )
+        elif self.login_background_window is not None:
+            self.login_canvas.delete(self.login_background_window)
+            self.login_background_window = None
+
+        if self.login_card_window is not None:
+            self.login_canvas.coords(self.login_card_window, canvas_width // 2, canvas_height // 2)
 
     def _clear_root(self) -> None:
         for child in self.root.winfo_children():
