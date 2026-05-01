@@ -251,11 +251,36 @@ class WeighmentApp:
             foreground=self.colors["muted_text"],
             padding=(16, 10),
             borderwidth=0,
+            focuscolor=self.colors["surface"],
         )
         style.map(
             "Modern.TNotebook.Tab",
             background=[("selected", self.colors["surface"]), ("active", self.colors["surface_alt"])],
             foreground=[("selected", self.colors["text"])],
+            focuscolor=[("selected", self.colors["surface"]), ("!selected", self.colors["border"])],
+        )
+
+        # Remove the focus element from notebook tabs to avoid dotted focus rectangles.
+        style.layout(
+            "Modern.TNotebook.Tab",
+            [
+                (
+                    "Notebook.tab",
+                    {
+                        "sticky": "nswe",
+                        "children": [
+                            (
+                                "Notebook.padding",
+                                {
+                                    "side": "top",
+                                    "sticky": "nswe",
+                                    "children": [("Notebook.label", {"side": "top", "sticky": ""})],
+                                },
+                            )
+                        ],
+                    },
+                )
+            ],
         )
 
         style.configure(
@@ -274,6 +299,23 @@ class WeighmentApp:
             padding=(8, 8),
         )
         style.map("Modern.Treeview", background=[("selected", self.colors["blue"])], foreground=[("selected", "white")])
+
+        # Remove dotted focus outline from treeview rows/items.
+        style.layout(
+            "Modern.Treeview.Item",
+            [
+                (
+                    "Treeitem.padding",
+                    {
+                        "sticky": "nswe",
+                        "children": [
+                            ("Treeitem.image", {"side": "left", "sticky": ""}),
+                            ("Treeitem.text", {"side": "left", "sticky": ""}),
+                        ],
+                    },
+                )
+            ],
+        )
 
     def _create_shadow_card(
         self,
@@ -794,15 +836,6 @@ class WeighmentApp:
         except Exception:
             pass
         notebook.pack(fill="both", expand=True)
-
-        # If notebook ever receives focus, move focus elsewhere to avoid visible dotted focus
-        def _defocus_notebook(_e=None):
-            try:
-                outer.focus_set()
-            except Exception:
-                pass
-
-        notebook.bind("<FocusIn>", _defocus_notebook)
         self.notebook = notebook
 
         weighment_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)

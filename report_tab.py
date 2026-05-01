@@ -89,6 +89,7 @@ class ReportTab:
         table_grid.columnconfigure(0, weight=1)
 
         self.report_tree = ttk.Treeview(table_grid, columns=columns, show="headings", height=16, style="Modern.Treeview")
+        self.report_tree.configure(takefocus=0)
 
         self.report_tree.heading("serial_no", text="Serial")
         self.report_tree.heading("vehicle_no", text="Vehicle No")
