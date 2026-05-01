@@ -5,6 +5,7 @@ import sqlite3
 import threading
 import tempfile
 from datetime import datetime, timedelta
+import sys
 import tkinter as tk
 from tkinter import messagebox, ttk
 from urllib.parse import unquote
@@ -31,7 +32,7 @@ DEFAULT_USER_PASSWORD = "User@123"
 class WeighmentApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Weighment Section")
+        self.root.title("Weighing Bridge Software By Helping Hands Technologies")
         self.root.geometry("1080x760")
         self.root.minsize(900, 620)
 
@@ -142,6 +143,8 @@ class WeighmentApp:
         style.configure("Value.TLabel", background=self.colors["surface"], foreground=self.colors["text"], font=("Segoe UI Semibold", 11))
         style.configure("HeroValue.TLabel", background=self.colors["surface"], foreground=self.colors["success"], font=("Consolas", 48, "bold"))
         style.configure("HeroNote.TLabel", background=self.colors["surface"], foreground=self.colors["muted_text"], font=("Segoe UI", 9))
+        style.configure("LiveWeight.TFrame", background="#000000")
+        style.configure("LiveWeight.TLabel", background="#000000", foreground="#10b981", font=("Consolas", 64, "bold"))
         style.configure("StatusBar.TLabel", background=self.colors["background"], foreground=self.colors["muted_text"])
 
         style.configure(
@@ -154,6 +157,8 @@ class WeighmentApp:
             borderwidth=0,
         )
         style.map("Field.TEntry", fieldbackground=[("focus", self.colors["surface"]), ("!disabled", self.colors["field"])])
+
+        style.configure("Focused.Field.TEntry", fieldbackground=self.colors["surface"], background=self.colors["surface"], foreground=self.colors["text"])
 
         style.configure(
             "Primary.TButton",
@@ -205,6 +210,40 @@ class WeighmentApp:
         )
         style.map("Ghost.TButton", background=[("active", self.colors["surface_alt"]), ("pressed", self.colors["border"])])
 
+        # Additional semantic button styles per UX spec
+        style.configure(
+            "Save.TButton",
+            background=self.colors["success"],
+            foreground="white",
+            padding=(16, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Save.TButton", background=[("active", self.colors["success_hover"]), ("pressed", self.colors["success_hover"])])
+
+        style.configure(
+            "Secondary.TButton",
+            background=self.colors["blue"],
+            foreground="white",
+            padding=(14, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Secondary.TButton", background=[("active", self.colors["blue_hover"]), ("pressed", self.colors["blue_pressed"])])
+
+        style.configure(
+            "Print.TButton",
+            background=self.colors["surface_alt"],
+            foreground=self.colors["text"],
+            padding=(14, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Print.TButton", background=[("active", self.colors["border"]), ("pressed", self.colors["border"])])
+
+        style.configure("NetPositive.TLabel", background=self.colors["surface"], foreground=self.colors["success"], font=("Segoe UI Semibold", 14))
+        style.configure("NetNegative.TLabel", background=self.colors["surface"], foreground=self.colors["red"], font=("Segoe UI Semibold", 14))
+
         style.configure("Modern.TNotebook", background=self.colors["background"], borderwidth=0)
         style.configure(
             "Modern.TNotebook.Tab",
@@ -253,9 +292,65 @@ class WeighmentApp:
         card.pack(fill="both", expand=True, padx=(0, offset), pady=(0, offset))
         return card
 
+    def _create_header_banner(self, parent: ttk.Frame) -> None:
+        # Creates a responsive banner with subtle horizontal blue gradient and centered title
+        banner_height = 80
+        canvas = tk.Canvas(parent, height=banner_height, bd=0, highlightthickness=0)
+        canvas.pack(fill="x", padx=6, pady=(6, 6))
+
+        title_text = "Weighing Bridge Software By Helping Hands Technologies"
+
+        # Keep a reference to PhotoImage to avoid GC
+        canvas._bg_image = None
+
+        def _render_banner(event=None):
+            w = max(200, canvas.winfo_width())
+            h = max(40, canvas.winfo_height())
+
+            # create a subtle left-to-right blue gradient using PIL
+            try:
+                from PIL import ImageDraw
+
+                img = Image.new("RGB", (w, h), color="#f8fafc")
+                draw = ImageDraw.Draw(img)
+                start = (45, 120, 255)
+                end = (150, 200, 255)
+                for x in range(w):
+                    t = x / max(1, w - 1)
+                    r = int(start[0] * (1 - t) + end[0] * t)
+                    g = int(start[1] * (1 - t) + end[1] * t)
+                    b = int(start[2] * (1 - t) + end[2] * t)
+                    draw.line([(x, 0), (x, h)], fill=(r, g, b))
+
+                photo = ImageTk.PhotoImage(img)
+                canvas._bg_image = photo
+                canvas.delete("all")
+                canvas.create_image(0, 0, image=photo, anchor="nw")
+
+                # responsive font size based on width
+                font_size = max(16, min(34, w // 30))
+                font = ("Segoe UI", font_size, "bold")
+
+                # drop shadow
+                canvas.create_text(w // 2 + 2, h // 2 + 2, text=title_text, font=font, fill="#0b1220", anchor="c" )
+                # main text
+                canvas.create_text(w // 2, h // 2, text=title_text, font=font, fill="#062f6b", anchor="c")
+            except Exception:
+                # fallback: plain background and text
+                canvas.delete("all")
+                canvas.create_rectangle(0, 0, w, h, fill=self.colors["surface_alt"], outline="")
+                font_size = max(16, min(34, w // 30))
+                font = ("Segoe UI", font_size, "bold")
+                canvas.create_text(w // 2, h // 2, text=title_text, font=font, fill=self.colors["text"], anchor="c")
+
+        canvas.bind("<Configure>", _render_banner)
+        # initial render
+        parent.after(50, _render_banner)
+        return canvas
+
     def _show_login_screen(self, use_background: bool = True) -> None:
         self._clear_root()
-        self.root.title("Weighment Section - Login")
+        self.root.title("Weighing Bridge Software By Helping Hands Technologies - Login")
 
         self.login_background_window = None
         self.login_card_window = None
@@ -310,12 +405,10 @@ class WeighmentApp:
         self._update_login_background()
 
     def _get_login_background_path(self) -> str | None:
-        image_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "assets",
-            "images",
-            "weighing_bridge_img.jpeg",
-        )
+        # Support running from PyInstaller onefile bundle: resources are unpacked to _MEIPASS
+        filename = "weighing_bridge_img.jpeg"
+        base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        image_path = os.path.join(base_dir, "assets", "images", filename)
         return image_path if os.path.exists(image_path) else None
 
     def _load_login_background(self, image_path: str) -> None:
@@ -671,18 +764,21 @@ class WeighmentApp:
             return
 
         self._clear_root()
-        self.root.title("Weighment Section")
+        self.root.title("Weighing Bridge Software By Helping Hands Technologies")
         self.root.configure(bg=self.colors["background"])
 
         outer = ttk.Frame(self.root, style="App.TFrame", padding=16)
         outer.pack(fill="both", expand=True)
 
         header = self._create_shadow_card(outer, fill="x", pady=(0, 14), offset=4)
-        header.columnconfigure(0, weight=1)
-        header_body = ttk.Frame(header, style="Card.TFrame")
-        header_body.pack(fill="x", expand=True)
+        # prominent banner
+        banner = self._create_header_banner(header)
 
-        ttk.Label(header_body, textvariable=self.session_status_var, style="SectionTitle.TLabel").pack(side="left")
+        # small status row below the banner (keeps session info and actions compact)
+        header_body = ttk.Frame(header, style="Card.TFrame")
+        header_body.pack(fill="x", expand=True, padx=6, pady=(4, 8))
+
+        ttk.Label(header_body, textvariable=self.session_status_var, style="Muted.TLabel").pack(side="left")
         if self.session_role == "user":
             ttk.Label(header_body, textvariable=self.subscription_info_var, style="Muted.TLabel").pack(side="left", padx=(14, 0))
         if self.session_role != "admin":
@@ -692,7 +788,21 @@ class WeighmentApp:
         ttk.Button(header_body, text="Logout", command=self.logout, style="Ghost.TButton").pack(side="right", pady=2)
 
         notebook = ttk.Notebook(outer, style="Modern.TNotebook")
+        # remove dotted focus rectangle on tabs: don't take focus and hide highlight
+        try:
+            notebook.configure(highlightthickness=0, takefocus=0)
+        except Exception:
+            pass
         notebook.pack(fill="both", expand=True)
+
+        # If notebook ever receives focus, move focus elsewhere to avoid visible dotted focus
+        def _defocus_notebook(_e=None):
+            try:
+                outer.focus_set()
+            except Exception:
+                pass
+
+        notebook.bind("<FocusIn>", _defocus_notebook)
         self.notebook = notebook
 
         weighment_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
@@ -725,11 +835,70 @@ class WeighmentApp:
         ).pack(fill="x", pady=(10, 0))
 
     def _build_weighment_tab(self, container: ttk.Frame) -> None:
+        # Make the weighment tab vertically scrollable so bottom actions are reachable
+        scroll_canvas = tk.Canvas(container, highlightthickness=0, bd=0, bg=self.colors["background"])
+        v_scroll = ttk.Scrollbar(container, orient="vertical", command=scroll_canvas.yview)
+        scroll_canvas.configure(yscrollcommand=v_scroll.set)
+        v_scroll.pack(side="right", fill="y")
+        scroll_canvas.pack(side="left", fill="both", expand=True)
+
+        content = ttk.Frame(scroll_canvas, style="App.TFrame")
+        content_window = scroll_canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _sync_scrollregion(_event=None) -> None:
+            scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all"))
+
+        def _sync_width(event) -> None:
+            scroll_canvas.itemconfigure(content_window, width=event.width)
+
+        content.bind("<Configure>", _sync_scrollregion)
+        scroll_canvas.bind("<Configure>", _sync_width)
+
+        # Mouse wheel support: bind while pointer is over the weighment content
+        def _on_mousewheel(event):
+            # Linux uses Button-4/5 (event.num), Windows/macOS use event.delta
+            try:
+                if hasattr(event, "num") and event.num in (4, 5):
+                    # Button-4 = scroll up, Button-5 = scroll down
+                    delta = -1 if event.num == 4 else 1
+                else:
+                    # Normalize Windows/macOS delta (120 units per notch on Windows)
+                    delta = int(-1 * (event.delta / 120)) if event.delta != 0 else 0
+            except Exception:
+                delta = 0
+
+            if delta:
+                scroll_canvas.yview_scroll(delta, "units")
+
+        def _bind_wheel(_e=None):
+            scroll_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            scroll_canvas.bind_all("<Button-4>", _on_mousewheel)
+            scroll_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_wheel(_e=None):
+            try:
+                scroll_canvas.unbind_all("<MouseWheel>")
+                scroll_canvas.unbind_all("<Button-4>")
+                scroll_canvas.unbind_all("<Button-5>")
+            except Exception:
+                pass
+
+        content.bind("<Enter>", _bind_wheel)
+        content.bind("<Leave>", _unbind_wheel)
+
+        # use content as the container for the rest of the tab
+        container = content
+
         hero_card = self._create_shadow_card(container, fill="x", pady=(0, 14), offset=4)
-        ttk.Label(hero_card, text="Live Weight", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(hero_card, textvariable=self.live_weight_var, style="HeroValue.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        ttk.Label(hero_card, text="Auto-updating every second", style="HeroNote.TLabel").grid(row=2, column=0, sticky="w", pady=(2, 0))
-        hero_card.columnconfigure(0, weight=1)
+        # Prominent live weight display (digital-style)
+        live_frame = tk.Frame(hero_card, bg="#000000", padx=12, pady=12)
+        live_frame.pack(fill="x", padx=6, pady=6)
+        # Title and note above the digital display
+        ttk.Label(live_frame, text="Live Weight", style="SectionTitle.TLabel").pack(anchor="w")
+        # Large digital label (tk Label so background stays black)
+        live_display = tk.Label(live_frame, textvariable=self.live_weight_var, bg="#000000", fg="#10b981", font=("Consolas", 64, "bold"))
+        live_display.pack(anchor="center", pady=(6, 0))
+        ttk.Label(live_frame, text="Auto-updating every second", style="HeroNote.TLabel").pack(anchor="w", pady=(6, 0))
 
         entry_card = self._create_shadow_card(container, fill="x", pady=(0, 14), offset=4)
         sections_row = ttk.Frame(entry_card, style="Card.TFrame")
@@ -738,9 +907,9 @@ class WeighmentApp:
         sections_row.columnconfigure(1, weight=1)
         sections_row.columnconfigure(2, weight=1)
 
-        vehicle_card = ttk.LabelFrame(sections_row, text="Vehicle Info", style="Card.TLabelframe", padding=16)
-        customer_card = ttk.LabelFrame(sections_row, text="Customer Info", style="Card.TLabelframe", padding=16)
-        transport_card = ttk.LabelFrame(sections_row, text="Transport Info", style="Card.TLabelframe", padding=16)
+        vehicle_card = ttk.LabelFrame(sections_row, text="🚚  Vehicle Info", style="Card.TLabelframe", padding=16)
+        customer_card = ttk.LabelFrame(sections_row, text="👤  Customer Info", style="Card.TLabelframe", padding=16)
+        transport_card = ttk.LabelFrame(sections_row, text="🚚  Transport Info", style="Card.TLabelframe", padding=16)
 
         vehicle_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         customer_card.grid(row=0, column=1, sticky="nsew", padx=(0, 10))
@@ -793,12 +962,16 @@ class WeighmentApp:
         action_card.pack(fill="both", expand=True, padx=(0, 4), pady=(0, 4))
 
         ttk.Label(result_card, text="Captured Weights", style="SectionTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
-        ttk.Label(result_card, text="Gross Weight", style="Muted.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=8)
-        ttk.Label(result_card, textvariable=self.gross_var, style="Value.TLabel").grid(row=1, column=1, sticky="e", padx=6, pady=8)
-        ttk.Label(result_card, text="Tare Weight", style="Muted.TLabel").grid(row=2, column=0, sticky="w", padx=6, pady=8)
-        ttk.Label(result_card, textvariable=self.tare_var, style="Value.TLabel").grid(row=2, column=1, sticky="e", padx=6, pady=8)
-        ttk.Label(result_card, text="Net Weight", style="Muted.TLabel").grid(row=3, column=0, sticky="w", padx=6, pady=8)
-        ttk.Label(result_card, textvariable=self.net_var, style="Value.TLabel").grid(row=3, column=1, sticky="e", padx=6, pady=8)
+        ttk.Label(result_card, text="Gross", style="Muted.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=8)
+        self.gross_display_label = ttk.Label(result_card, textvariable=self.gross_var, style="Value.TLabel")
+        self.gross_display_label.grid(row=1, column=1, sticky="e", padx=6, pady=8)
+        ttk.Label(result_card, text="Tare", style="Muted.TLabel").grid(row=2, column=0, sticky="w", padx=6, pady=8)
+        self.tare_display_label = ttk.Label(result_card, textvariable=self.tare_var, style="Value.TLabel")
+        self.tare_display_label.grid(row=2, column=1, sticky="e", padx=6, pady=8)
+        ttk.Label(result_card, text="Net", style="Muted.TLabel").grid(row=3, column=0, sticky="w", padx=6, pady=8)
+        # Net weight highlighted; will update style dynamically
+        self.net_display_label = ttk.Label(result_card, textvariable=self.net_var, style="NetPositive.TLabel")
+        self.net_display_label.grid(row=3, column=1, sticky="e", padx=6, pady=8)
         result_card.columnconfigure(0, weight=1)
         result_card.columnconfigure(1, weight=0)
 
@@ -808,19 +981,19 @@ class WeighmentApp:
         button_grid.columnconfigure(0, weight=1)
         button_grid.columnconfigure(1, weight=1)
 
-        ttk.Button(button_grid, text="Gross Weight", command=self.capture_gross_weight, style="Primary.TButton").grid(
+        ttk.Button(button_grid, text="Gross Weight", command=self.capture_gross_weight, style="Secondary.TButton").grid(
             row=0, column=0, sticky="ew", padx=(0, 10), pady=6
         )
-        ttk.Button(button_grid, text="Tare Weight", command=self.capture_tare_weight, style="Primary.TButton").grid(
+        ttk.Button(button_grid, text="Tare Weight", command=self.capture_tare_weight, style="Secondary.TButton").grid(
             row=0, column=1, sticky="ew", pady=6
         )
-        ttk.Button(button_grid, text="Net Weight", command=self.calculate_net_weight, style="Primary.TButton").grid(
+        ttk.Button(button_grid, text="Net Weight", command=self.calculate_net_weight, style="Secondary.TButton").grid(
             row=1, column=0, sticky="ew", padx=(0, 10), pady=6
         )
-        ttk.Button(button_grid, text="Save", command=self.save_to_db, style="Success.TButton").grid(
+        ttk.Button(button_grid, text="Save", command=self.save_to_db, style="Save.TButton").grid(
             row=1, column=1, sticky="ew", pady=6
         )
-        ttk.Button(button_grid, text="Print", command=self.print_slip, style="Warning.TButton").grid(
+        ttk.Button(button_grid, text="Print", command=self.print_slip, style="Print.TButton").grid(
             row=2, column=0, sticky="ew", padx=(0, 10), pady=6
         )
         ttk.Button(button_grid, text="Clear", command=self.clear_fields, style="Danger.TButton").grid(
@@ -840,6 +1013,21 @@ class WeighmentApp:
             if readonly:
                 entry.configure(state="readonly")
             entry.grid(row=index, column=1, sticky="ew", padx=6, pady=6)
+            # Focus state: swap style to give visual feedback for fast operator input
+            def _on_focus_in(e, widget=entry):
+                try:
+                    widget.configure(style="Focused.Field.TEntry")
+                except Exception:
+                    pass
+
+            def _on_focus_out(e, widget=entry):
+                try:
+                    widget.configure(style="Field.TEntry")
+                except Exception:
+                    pass
+
+            entry.bind("<FocusIn>", _on_focus_in)
+            entry.bind("<FocusOut>", _on_focus_out)
 
         card.columnconfigure(0, weight=0)
         card.columnconfigure(1, weight=1)
@@ -930,10 +1118,22 @@ class WeighmentApp:
         if self.gross_weight is None or self.tare_weight is None:
             self.net_weight = None
             self.net_var.set("-")
+            # ensure neutral style when missing
+            try:
+                self.net_display_label.configure(style="Value.TLabel")
+            except Exception:
+                pass
             return
 
         self.net_weight = self.gross_weight - self.tare_weight
         self.net_var.set(f"{self.net_weight} kg")
+        try:
+            if self.net_weight < 0:
+                self.net_display_label.configure(style="NetNegative.TLabel")
+            else:
+                self.net_display_label.configure(style="NetPositive.TLabel")
+        except Exception:
+            pass
 
     def _get_db_connection(self, system: bool = False) -> sqlite3.Connection:
         connection = sqlite3.connect(DB_FILE)
