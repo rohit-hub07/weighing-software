@@ -35,6 +35,28 @@ class WeighmentApp:
         self.root.geometry("1080x760")
         self.root.minsize(900, 620)
 
+        self.colors = {
+            "background": "#f8fafc",
+            "surface": "#ffffff",
+            "surface_alt": "#f1f5f9",
+            "shadow": "#dbe4ee",
+            "border": "#e2e8f0",
+            "text": "#0f172a",
+            "muted_text": "#475569",
+            "field": "#f8fafc",
+            "success": "#16a34a",
+            "success_hover": "#15803d",
+            "blue": "#2563eb",
+            "blue_hover": "#1d4ed8",
+            "blue_pressed": "#1e40af",
+            "orange": "#f97316",
+            "orange_hover": "#ea580c",
+            "red": "#dc2626",
+            "red_hover": "#b91c1c",
+        }
+
+        self._setup_modern_theme()
+
         self.current_weight = 0
         self.gross_weight = None
         self.tare_weight = None
@@ -97,6 +119,140 @@ class WeighmentApp:
         self._update_datetime()
         self.generate_weight()
 
+    def _setup_modern_theme(self) -> None:
+        style = ttk.Style(self.root)
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+
+        self.root.configure(bg=self.colors["background"])
+        self.root.option_add("*Font", ("Segoe UI", 10))
+
+        style.configure(".", background=self.colors["background"], foreground=self.colors["text"])
+        style.configure("App.TFrame", background=self.colors["background"])
+        style.configure("Card.TFrame", background=self.colors["surface"])
+        style.configure("Card.TLabelframe", background=self.colors["surface"], borderwidth=0, relief="flat", padding=18)
+        style.configure(
+            "Card.TLabelframe.Label",
+            background=self.colors["surface"],
+            foreground=self.colors["text"],
+            font=("Segoe UI Semibold", 11),
+        )
+        style.configure("SectionTitle.TLabel", background=self.colors["surface"], foreground=self.colors["text"], font=("Segoe UI Semibold", 11))
+        style.configure("Muted.TLabel", background=self.colors["surface"], foreground=self.colors["muted_text"])
+        style.configure("Value.TLabel", background=self.colors["surface"], foreground=self.colors["text"], font=("Segoe UI Semibold", 11))
+        style.configure("HeroValue.TLabel", background=self.colors["surface"], foreground=self.colors["success"], font=("Consolas", 48, "bold"))
+        style.configure("HeroNote.TLabel", background=self.colors["surface"], foreground=self.colors["muted_text"], font=("Segoe UI", 9))
+        style.configure("StatusBar.TLabel", background=self.colors["background"], foreground=self.colors["muted_text"])
+
+        style.configure(
+            "Field.TEntry",
+            fieldbackground=self.colors["field"],
+            background=self.colors["field"],
+            foreground=self.colors["text"],
+            padding=(10, 8),
+            relief="flat",
+            borderwidth=0,
+        )
+        style.map("Field.TEntry", fieldbackground=[("focus", self.colors["surface"]), ("!disabled", self.colors["field"])])
+
+        style.configure(
+            "Primary.TButton",
+            background=self.colors["blue"],
+            foreground="white",
+            padding=(16, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Primary.TButton", background=[("active", self.colors["blue_hover"]), ("pressed", self.colors["blue_pressed"])])
+
+        style.configure(
+            "Success.TButton",
+            background=self.colors["success"],
+            foreground="white",
+            padding=(16, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Success.TButton", background=[("active", self.colors["success_hover"]), ("pressed", self.colors["success_hover"])])
+
+        style.configure(
+            "Warning.TButton",
+            background=self.colors["orange"],
+            foreground="white",
+            padding=(16, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Warning.TButton", background=[("active", self.colors["orange_hover"]), ("pressed", self.colors["orange_hover"])])
+
+        style.configure(
+            "Danger.TButton",
+            background=self.colors["red"],
+            foreground="white",
+            padding=(16, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Danger.TButton", background=[("active", self.colors["red_hover"]), ("pressed", self.colors["red_hover"])])
+
+        style.configure(
+            "Ghost.TButton",
+            background=self.colors["surface"],
+            foreground=self.colors["text"],
+            padding=(14, 9),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Ghost.TButton", background=[("active", self.colors["surface_alt"]), ("pressed", self.colors["border"])])
+
+        style.configure("Modern.TNotebook", background=self.colors["background"], borderwidth=0)
+        style.configure(
+            "Modern.TNotebook.Tab",
+            background=self.colors["border"],
+            foreground=self.colors["muted_text"],
+            padding=(16, 10),
+            borderwidth=0,
+        )
+        style.map(
+            "Modern.TNotebook.Tab",
+            background=[("selected", self.colors["surface"]), ("active", self.colors["surface_alt"])],
+            foreground=[("selected", self.colors["text"])],
+        )
+
+        style.configure(
+            "Modern.Treeview",
+            background=self.colors["surface"],
+            fieldbackground=self.colors["surface"],
+            foreground=self.colors["text"],
+            rowheight=30,
+            borderwidth=0,
+        )
+        style.configure(
+            "Modern.Treeview.Heading",
+            background=self.colors["surface_alt"],
+            foreground=self.colors["text"],
+            relief="flat",
+            padding=(8, 8),
+        )
+        style.map("Modern.Treeview", background=[("selected", self.colors["blue"])], foreground=[("selected", "white")])
+
+    def _create_shadow_card(
+        self,
+        parent: tk.Widget,
+        *,
+        fill: str = "x",
+        expand: bool = False,
+        padx: tuple[int, int] | int = 0,
+        pady: tuple[int, int] | int = 0,
+        offset: int = 6,
+    ) -> ttk.Frame:
+        shadow = tk.Frame(parent, bg=self.colors["shadow"], bd=0, highlightthickness=0)
+        shadow.pack(fill=fill, expand=expand, padx=padx, pady=pady)
+
+        card = ttk.Frame(shadow, style="Card.TFrame", padding=0)
+        card.pack(fill="both", expand=True, padx=(0, offset), pady=(0, offset))
+        return card
+
     def _show_login_screen(self, use_background: bool = True) -> None:
         self._clear_root()
         self.root.title("Weighment Section - Login")
@@ -105,7 +261,7 @@ class WeighmentApp:
         self.login_card_window = None
         self.login_canvas = None
 
-        background_color = "#111827" if use_background else "#ffffff"
+        background_color = self.colors["background"]
         wrapper = tk.Frame(self.root, bg=background_color)
         wrapper.pack(fill="both", expand=True)
 
@@ -117,22 +273,37 @@ class WeighmentApp:
             background_path = self._get_login_background_path()
             if background_path:
                 self._load_login_background(background_path)
+            else:
+                self.login_background_image = None
+                self.login_background_photo = None
         else:
             self.login_background_image = None
             self.login_background_photo = None
 
-        card = ttk.LabelFrame(self.login_canvas, text="Login", padding=16)
-        self.login_card_window = self.login_canvas.create_window(0, 0, window=card, anchor="center")
+        shadow = tk.Frame(self.login_canvas, bg=self.colors["shadow"], bd=0, highlightthickness=0)
+        self.login_card_window = self.login_canvas.create_window(0, 0, window=shadow, anchor="center")
 
-        ttk.Label(card, text="Username").grid(row=0, column=0, sticky="w", padx=6, pady=8)
-        username_entry = ttk.Entry(card, textvariable=self.login_username_var, width=32)
-        username_entry.grid(row=0, column=1, sticky="w", padx=6, pady=8)
+        card = ttk.Frame(shadow, style="Card.TFrame", padding=24)
+        card.pack(fill="both", expand=True, padx=(0, 6), pady=(0, 6))
 
-        ttk.Label(card, text="Password").grid(row=1, column=0, sticky="w", padx=6, pady=8)
-        password_entry = ttk.Entry(card, textvariable=self.login_password_var, show="*", width=32)
-        password_entry.grid(row=1, column=1, sticky="w", padx=6, pady=8)
+        ttk.Label(card, text="Weighbridge Access", style="SectionTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        ttk.Label(card, text="Sign in to the operator dashboard", style="HeroNote.TLabel").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(0, 18)
+        )
 
-        ttk.Button(card, text="Login", command=self.login).grid(row=2, column=0, columnspan=2, pady=(10, 4))
+        ttk.Label(card, text="Username", style="Muted.TLabel").grid(row=2, column=0, sticky="w", padx=6, pady=6)
+        username_entry = ttk.Entry(card, textvariable=self.login_username_var, width=34, style="Field.TEntry")
+        username_entry.grid(row=2, column=1, sticky="ew", padx=6, pady=6)
+
+        ttk.Label(card, text="Password", style="Muted.TLabel").grid(row=3, column=0, sticky="w", padx=6, pady=6)
+        password_entry = ttk.Entry(card, textvariable=self.login_password_var, show="*", width=34, style="Field.TEntry")
+        password_entry.grid(row=3, column=1, sticky="ew", padx=6, pady=6)
+
+        ttk.Button(card, text="Login", command=self.login, style="Success.TButton").grid(
+            row=4, column=0, columnspan=2, sticky="ew", padx=6, pady=(16, 0)
+        )
+
+        card.columnconfigure(1, weight=1)
 
         password_entry.bind("<Return>", lambda _e: self.login())
         username_entry.focus_set()
@@ -421,19 +592,20 @@ class WeighmentApp:
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.configure(bg=self.colors["background"])
 
         username_var = tk.StringVar()
         password_var = tk.StringVar()
 
-        frame = ttk.Frame(dialog, padding=14)
+        frame = ttk.Frame(dialog, style="App.TFrame", padding=16)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Admin username").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        user_entry = ttk.Entry(frame, textvariable=username_var, width=30)
+        ttk.Label(frame, text="Admin username", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        user_entry = ttk.Entry(frame, textvariable=username_var, width=30, style="Field.TEntry")
         user_entry.grid(row=0, column=1, sticky="w", padx=6, pady=6)
 
-        ttk.Label(frame, text="Admin password").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        pass_entry = ttk.Entry(frame, textvariable=password_var, show="*", width=30)
+        ttk.Label(frame, text="Admin password", style="Muted.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+        pass_entry = ttk.Entry(frame, textvariable=password_var, show="*", width=30, style="Field.TEntry")
         pass_entry.grid(row=1, column=1, sticky="w", padx=6, pady=6)
 
         def _do_auth() -> None:
@@ -456,14 +628,14 @@ class WeighmentApp:
 
         action_row = ttk.Frame(frame)
         action_row.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 4))
-        ttk.Button(action_row, text="Authenticate", command=_do_auth).pack(side="left", padx=(0, 10))
-        ttk.Button(action_row, text="Cancel", command=dialog.destroy).pack(side="left")
+        ttk.Button(action_row, text="Authenticate", command=_do_auth, style="Success.TButton").pack(side="left", padx=(0, 10))
+        ttk.Button(action_row, text="Cancel", command=dialog.destroy, style="Ghost.TButton").pack(side="left")
 
         pass_entry.bind("<Return>", lambda _e: _do_auth())
         user_entry.focus_set()
 
     def _build_admin_locked_tab(self, container: ttk.Frame) -> None:
-        card = ttk.LabelFrame(container, text="Admin Access Required", padding=18)
+        card = ttk.LabelFrame(container, text="Admin Access Required", style="Card.TLabelframe", padding=18)
         card.pack(fill="both", expand=True, padx=10, pady=10)
 
         ttk.Label(
@@ -475,7 +647,7 @@ class WeighmentApp:
             wraplength=500,
         ).pack(anchor="w", pady=(0, 10))
 
-        ttk.Button(card, text="Login as Admin", command=self._admin_reauthentication_dialog).pack(anchor="w")
+        ttk.Button(card, text="Login as Admin", command=self._admin_reauthentication_dialog, style="Primary.TButton").pack(anchor="w")
 
     def _sqlite_authorizer(self, action, arg1, _arg2, _db_name, _trigger_name) -> int:
         restricted_tables = {"admins", "subscriptions"}
@@ -500,29 +672,32 @@ class WeighmentApp:
 
         self._clear_root()
         self.root.title("Weighment Section")
+        self.root.configure(bg=self.colors["background"])
 
-        outer = ttk.Frame(self.root, padding=10)
+        outer = ttk.Frame(self.root, style="App.TFrame", padding=16)
         outer.pack(fill="both", expand=True)
 
-        header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 6))
+        header = self._create_shadow_card(outer, fill="x", pady=(0, 14), offset=4)
+        header.columnconfigure(0, weight=1)
+        header_body = ttk.Frame(header, style="Card.TFrame")
+        header_body.pack(fill="x", expand=True)
 
-        ttk.Label(header, textvariable=self.session_status_var).pack(side="left")
+        ttk.Label(header_body, textvariable=self.session_status_var, style="SectionTitle.TLabel").pack(side="left")
         if self.session_role == "user":
-            ttk.Label(header, textvariable=self.subscription_info_var).pack(side="left", padx=(14, 0))
+            ttk.Label(header_body, textvariable=self.subscription_info_var, style="Muted.TLabel").pack(side="left", padx=(14, 0))
         if self.session_role != "admin":
-            ttk.Button(header, text="Admin Login", command=self._admin_reauthentication_dialog).pack(
-                side="right", padx=(8, 0)
+            ttk.Button(header_body, text="Admin Login", command=self._admin_reauthentication_dialog, style="Ghost.TButton").pack(
+                side="right", padx=(8, 0), pady=2
             )
-        ttk.Button(header, text="Logout", command=self.logout).pack(side="right")
+        ttk.Button(header_body, text="Logout", command=self.logout, style="Ghost.TButton").pack(side="right", pady=2)
 
-        notebook = ttk.Notebook(outer)
+        notebook = ttk.Notebook(outer, style="Modern.TNotebook")
         notebook.pack(fill="both", expand=True)
         self.notebook = notebook
 
-        weighment_tab = ttk.Frame(notebook, padding=12)
-        admin_tab = ttk.Frame(notebook, padding=12)
-        report_tab = ttk.Frame(notebook, padding=12)
+        weighment_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
+        admin_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
+        report_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
         self.weighment_frame = weighment_tab
         self.admin_frame = admin_tab
         self.report_frame = report_tab
@@ -546,139 +721,128 @@ class WeighmentApp:
             text="© Copyright Helping Hands Technologies. All Rights Reserved",
             anchor="center",
             justify="center",
-            font=("Segoe UI", 9),
-        ).pack(fill="x", pady=(8, 0))
+            style="StatusBar.TLabel",
+        ).pack(fill="x", pady=(10, 0))
 
     def _build_weighment_tab(self, container: ttk.Frame) -> None:
-        input_card = ttk.LabelFrame(container, text="Weighment Entry", padding=12)
-        input_card.pack(fill="x")
+        hero_card = self._create_shadow_card(container, fill="x", pady=(0, 14), offset=4)
+        ttk.Label(hero_card, text="Live Weight", style="SectionTitle.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(hero_card, textvariable=self.live_weight_var, style="HeroValue.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(hero_card, text="Auto-updating every second", style="HeroNote.TLabel").grid(row=2, column=0, sticky="w", pady=(2, 0))
+        hero_card.columnconfigure(0, weight=1)
 
-        ttk.Label(input_card, text="Serial No").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.serial_no_var, state="readonly", width=20).grid(
-            row=0, column=1, sticky="w", padx=6, pady=6
+        entry_card = self._create_shadow_card(container, fill="x", pady=(0, 14), offset=4)
+        sections_row = ttk.Frame(entry_card, style="Card.TFrame")
+        sections_row.pack(fill="x")
+        sections_row.columnconfigure(0, weight=1)
+        sections_row.columnconfigure(1, weight=1)
+        sections_row.columnconfigure(2, weight=1)
+
+        vehicle_card = ttk.LabelFrame(sections_row, text="Vehicle Info", style="Card.TLabelframe", padding=16)
+        customer_card = ttk.LabelFrame(sections_row, text="Customer Info", style="Card.TLabelframe", padding=16)
+        transport_card = ttk.LabelFrame(sections_row, text="Transport Info", style="Card.TLabelframe", padding=16)
+
+        vehicle_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        customer_card.grid(row=0, column=1, sticky="nsew", padx=(0, 10))
+        transport_card.grid(row=0, column=2, sticky="nsew")
+
+        self._render_labeled_fields(
+            vehicle_card,
+            [
+                ("Serial No", self.serial_no_var, True),
+                ("Vehicle No", self.vehicle_no_var, False),
+                ("Date", self.date_var, True),
+                ("Time", self.time_var, True),
+                ("Challan", self.challan_var, False),
+            ],
+        )
+        self._render_labeled_fields(
+            customer_card,
+            [
+                ("Customer Code", self.customer_code_var, False),
+                ("Customer Name", self.customer_name_var, False),
+                ("Product Code", self.product_code_var, False),
+                ("Product Name", self.product_name_var, False),
+            ],
+        )
+        self._render_labeled_fields(
+            transport_card,
+            [
+                ("Source Code", self.source_code_var, False),
+                ("Source Name", self.source_name_var, False),
+                ("Destination Code", self.desti_code_var, False),
+                ("Destination Name", self.desti_name_var, False),
+                ("Transporter Code", self.transporter_code_var, False),
+                ("Transporter Name", self.transporter_name_var, False),
+            ],
         )
 
-        ttk.Label(input_card, text="Vehicle No").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.vehicle_no_var, width=24).grid(
-            row=1, column=1, sticky="w", padx=6, pady=6
+        lower_row = ttk.Frame(container, style="App.TFrame")
+        lower_row.pack(fill="x")
+        lower_row.columnconfigure(0, weight=1)
+        lower_row.columnconfigure(1, weight=1)
+
+        result_shadow = tk.Frame(lower_row, bg=self.colors["shadow"], bd=0, highlightthickness=0)
+        result_shadow.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        result_card = ttk.Frame(result_shadow, style="Card.TFrame", padding=18)
+        result_card.pack(fill="both", expand=True, padx=(0, 4), pady=(0, 4))
+
+        action_shadow = tk.Frame(lower_row, bg=self.colors["shadow"], bd=0, highlightthickness=0)
+        action_shadow.grid(row=0, column=1, sticky="nsew")
+        action_card = ttk.Frame(action_shadow, style="Card.TFrame", padding=18)
+        action_card.pack(fill="both", expand=True, padx=(0, 4), pady=(0, 4))
+
+        ttk.Label(result_card, text="Captured Weights", style="SectionTitle.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        ttk.Label(result_card, text="Gross Weight", style="Muted.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=8)
+        ttk.Label(result_card, textvariable=self.gross_var, style="Value.TLabel").grid(row=1, column=1, sticky="e", padx=6, pady=8)
+        ttk.Label(result_card, text="Tare Weight", style="Muted.TLabel").grid(row=2, column=0, sticky="w", padx=6, pady=8)
+        ttk.Label(result_card, textvariable=self.tare_var, style="Value.TLabel").grid(row=2, column=1, sticky="e", padx=6, pady=8)
+        ttk.Label(result_card, text="Net Weight", style="Muted.TLabel").grid(row=3, column=0, sticky="w", padx=6, pady=8)
+        ttk.Label(result_card, textvariable=self.net_var, style="Value.TLabel").grid(row=3, column=1, sticky="e", padx=6, pady=8)
+        result_card.columnconfigure(0, weight=1)
+        result_card.columnconfigure(1, weight=0)
+
+        ttk.Label(action_card, text="Actions", style="SectionTitle.TLabel").pack(anchor="w", pady=(0, 10))
+        button_grid = ttk.Frame(action_card, style="Card.TFrame")
+        button_grid.pack(fill="x")
+        button_grid.columnconfigure(0, weight=1)
+        button_grid.columnconfigure(1, weight=1)
+
+        ttk.Button(button_grid, text="Gross Weight", command=self.capture_gross_weight, style="Primary.TButton").grid(
+            row=0, column=0, sticky="ew", padx=(0, 10), pady=6
+        )
+        ttk.Button(button_grid, text="Tare Weight", command=self.capture_tare_weight, style="Primary.TButton").grid(
+            row=0, column=1, sticky="ew", pady=6
+        )
+        ttk.Button(button_grid, text="Net Weight", command=self.calculate_net_weight, style="Primary.TButton").grid(
+            row=1, column=0, sticky="ew", padx=(0, 10), pady=6
+        )
+        ttk.Button(button_grid, text="Save", command=self.save_to_db, style="Success.TButton").grid(
+            row=1, column=1, sticky="ew", pady=6
+        )
+        ttk.Button(button_grid, text="Print", command=self.print_slip, style="Warning.TButton").grid(
+            row=2, column=0, sticky="ew", padx=(0, 10), pady=6
+        )
+        ttk.Button(button_grid, text="Clear", command=self.clear_fields, style="Danger.TButton").grid(
+            row=2, column=1, sticky="ew", pady=6
         )
 
-        ttk.Label(input_card, text="Date").grid(row=0, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.date_var, state="readonly", width=20).grid(
-            row=0, column=3, sticky="w", padx=6, pady=6
-        )
+        self._build_messaging_actions(container, pady=(14, 0))
 
-        ttk.Label(input_card, text="Time").grid(row=1, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.time_var, state="readonly", width=20).grid(
-            row=1, column=3, sticky="w", padx=6, pady=6
-        )
+    def _render_labeled_fields(
+        self,
+        card: ttk.LabelFrame,
+        fields: list[tuple[str, tk.StringVar, bool]],
+    ) -> None:
+        for index, (label_text, variable, readonly) in enumerate(fields):
+            ttk.Label(card, text=label_text, style="Muted.TLabel").grid(row=index, column=0, sticky="w", padx=6, pady=6)
+            entry = ttk.Entry(card, textvariable=variable, width=28, style="Field.TEntry")
+            if readonly:
+                entry.configure(state="readonly")
+            entry.grid(row=index, column=1, sticky="ew", padx=6, pady=6)
 
-        ttk.Label(input_card, text="CHALLAN").grid(row=2, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.challan_var, width=24).grid(
-            row=2, column=1, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(input_card, text="CUSTOMER Code").grid(row=3, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.customer_code_var, width=24).grid(
-            row=3, column=1, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(input_card, text="CUSTOMER Name").grid(row=3, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.customer_name_var, width=30).grid(
-            row=3, column=3, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(input_card, text="PRODUCT Code").grid(row=4, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.product_code_var, width=24).grid(
-            row=4, column=1, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(input_card, text="PRODUCT Name").grid(row=4, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.product_name_var, width=30).grid(
-            row=4, column=3, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(input_card, text="SOURCE Code").grid(row=5, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.source_code_var, width=24).grid(
-            row=5, column=1, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(input_card, text="SOURCE Name").grid(row=5, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.source_name_var, width=30).grid(
-            row=5, column=3, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(input_card, text="DESTI Code").grid(row=6, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.desti_code_var, width=24).grid(
-            row=6, column=1, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(input_card, text="DESTI Name").grid(row=6, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.desti_name_var, width=30).grid(
-            row=6, column=3, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(input_card, text="TRANSPOTER Code").grid(row=7, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.transporter_code_var, width=24).grid(
-            row=7, column=1, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(input_card, text="TRANSPOTER Name").grid(row=7, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(input_card, textvariable=self.transporter_name_var, width=30).grid(
-            row=7, column=3, sticky="w", padx=6, pady=6
-        )
-
-        weights_row = ttk.Frame(container, padding=(0, 14, 0, 10))
-        weights_row.pack(fill="x")
-
-        live_weight_card = ttk.LabelFrame(weights_row, text="Live Weight", padding=12)
-        live_weight_card.pack(side="left", fill="both", expand=True, padx=(0, 8))
-
-        tk.Label(
-            live_weight_card,
-            textvariable=self.live_weight_var,
-            font=("Consolas", 36, "bold"),
-            bg="black",
-            fg="#28ff6d",
-            padx=20,
-            pady=14,
-            relief="sunken",
-            bd=4,
-        ).pack(fill="both", expand=True)
-
-        right_panel = ttk.Frame(weights_row)
-        right_panel.pack(side="left", fill="both", expand=True, padx=(8, 0))
-
-        result_card = ttk.LabelFrame(right_panel, text="Captured Weights", padding=12)
-        result_card.pack(fill="both", expand=True)
-
-        ttk.Label(result_card, text="Gross Weight").grid(row=0, column=0, sticky="w", padx=6, pady=8)
-        ttk.Label(result_card, textvariable=self.gross_var, font=("Segoe UI", 11, "bold")).grid(
-            row=0, column=1, sticky="w", padx=6, pady=8
-        )
-
-        ttk.Label(result_card, text="Tare Weight").grid(row=1, column=0, sticky="w", padx=6, pady=8)
-        ttk.Label(result_card, textvariable=self.tare_var, font=("Segoe UI", 11, "bold")).grid(
-            row=1, column=1, sticky="w", padx=6, pady=8
-        )
-
-        ttk.Label(result_card, text="Net Weight").grid(row=2, column=0, sticky="w", padx=6, pady=8)
-        ttk.Label(result_card, textvariable=self.net_var, font=("Segoe UI", 11, "bold")).grid(
-            row=2, column=1, sticky="w", padx=6, pady=8
-        )
-
-        button_row = ttk.Frame(right_panel, padding=(0, 10, 0, 0))
-        button_row.pack(fill="x")
-
-        ttk.Button(button_row, text="Gross Weight", command=self.capture_gross_weight).pack(
-            side="left", padx=(0, 12), pady=4
-        )
-        ttk.Button(button_row, text="Tare Weight", command=self.capture_tare_weight).pack(
-            side="left", padx=(0, 12), pady=4
-        )
-        ttk.Button(button_row, text="Net Weight", command=self.calculate_net_weight).pack(
-            side="left", padx=(0, 12), pady=4
-        )
-        ttk.Button(button_row, text="Save", command=self.save_to_db).pack(side="left", padx=(0, 12), pady=4)
-        ttk.Button(button_row, text="Print", command=self.print_slip).pack(side="left", padx=(0, 12), pady=4)
-        ttk.Button(button_row, text="Clear", command=self.clear_fields).pack(side="left", pady=4)
-
-        self._build_messaging_actions(container, pady=(10, 0))
+        card.columnconfigure(0, weight=0)
+        card.columnconfigure(1, weight=1)
 
     def _build_admin_tab(self, container: ttk.Frame) -> None:
         if self.session_role != "admin":
@@ -706,24 +870,26 @@ class WeighmentApp:
         self.admin_tab.build()
 
     def _build_messaging_actions(self, container: ttk.Frame, pady: tuple[int, int] = (0, 10)) -> None:
-        messaging_card = ttk.LabelFrame(container, text="Messaging Actions", padding=12)
-        messaging_card.pack(fill="x", pady=pady)
+        messaging_card = self._create_shadow_card(container, fill="x", pady=pady, offset=4)
 
         ttk.Label(
             messaging_card,
             text="Configure credentials in Admin tab. Use the buttons below to send current slip.",
+            style="Muted.TLabel",
         ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 8))
 
         messaging_buttons = ttk.Frame(messaging_card)
         messaging_buttons.grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(4, 2))
 
-        ttk.Button(messaging_buttons, text="Send SMS", command=self.send_sms).pack(side="left", padx=(0, 12), pady=4)
-        ttk.Button(messaging_buttons, text="Send WhatsApp", command=self.send_whatsapp).pack(
+        ttk.Button(messaging_buttons, text="Send SMS", command=self.send_sms, style="Primary.TButton").pack(side="left", padx=(0, 12), pady=4)
+        ttk.Button(messaging_buttons, text="Send WhatsApp", command=self.send_whatsapp, style="Primary.TButton").pack(
             side="left", padx=(0, 12), pady=4
         )
-        ttk.Button(messaging_buttons, text="Send Telegram", command=self.send_telegram).pack(side="left", pady=4)
+        ttk.Button(messaging_buttons, text="Send Telegram", command=self.send_telegram, style="Primary.TButton").pack(side="left", pady=4)
 
-        ttk.Label(messaging_card, textvariable=self.message_status_var).grid(row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(messaging_card, textvariable=self.message_status_var, style="Muted.TLabel").grid(
+            row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(6, 0)
+        )
 
     def _build_report_tab(self, container: ttk.Frame) -> None:
         self.report_tab = ReportTab(container=container, get_db_connection=self._get_db_connection)

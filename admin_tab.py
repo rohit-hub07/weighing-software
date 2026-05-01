@@ -45,10 +45,31 @@ class AdminTab:
         self.subscription_tree = None
 
     def build(self) -> None:
-        top_row = ttk.Frame(self.container)
+        scroll_canvas = tk.Canvas(self.container, highlightthickness=0, bd=0, bg="#f8fafc")
+        scrollbar = ttk.Scrollbar(self.container, orient="vertical", command=scroll_canvas.yview)
+        scroll_canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        scroll_canvas.pack(side="left", fill="both", expand=True)
+
+        content = ttk.Frame(scroll_canvas, style="App.TFrame", padding=(0, 0, 0, 8))
+        content_window = scroll_canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _sync_scrollregion(_event=None) -> None:
+            scroll_canvas.configure(scrollregion=scroll_canvas.bbox("all"))
+
+        def _sync_width(event) -> None:
+            scroll_canvas.itemconfigure(content_window, width=event.width)
+
+        content.bind("<Configure>", _sync_scrollregion)
+        scroll_canvas.bind("<Configure>", _sync_width)
+
+        self.container = content
+
+        top_row = ttk.Frame(content, style="App.TFrame")
         top_row.pack(fill="x")
 
-        summary_card = ttk.LabelFrame(top_row, text="System Summary", padding=10)
+        summary_card = ttk.LabelFrame(top_row, text="System Summary", style="Card.TLabelframe", padding=16)
         summary_card.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
         ttk.Label(summary_card, text="Total Records").grid(row=0, column=0, sticky="w", padx=6, pady=4)
@@ -69,70 +90,75 @@ class AdminTab:
         ttk.Label(summary_card, text="Messaging Config").grid(row=5, column=0, sticky="w", padx=6, pady=4)
         ttk.Label(summary_card, textvariable=self.messaging_health_var).grid(row=5, column=1, sticky="w", padx=6, pady=4)
 
-        actions_card = ttk.LabelFrame(top_row, text="Maintenance", padding=10)
+        actions_card = ttk.LabelFrame(top_row, text="Maintenance", style="Card.TLabelframe", padding=16)
         actions_card.pack(side="left", fill="y", padx=(8, 0))
 
-        ttk.Button(actions_card, text="Refresh Summary", command=self.refresh_summary).pack(fill="x", pady=4)
-        ttk.Button(actions_card, text="Backup Database", command=self.backup_database).pack(fill="x", pady=4)
-        ttk.Button(actions_card, text="Export CSV", command=self.export_csv).pack(fill="x", pady=4)
+        ttk.Button(actions_card, text="Refresh Summary", command=self.refresh_summary, style="Primary.TButton").pack(fill="x", pady=4)
+        ttk.Button(actions_card, text="Backup Database", command=self.backup_database, style="Warning.TButton").pack(fill="x", pady=4)
+        ttk.Button(actions_card, text="Export CSV", command=self.export_csv, style="Success.TButton").pack(fill="x", pady=4)
 
-        messaging_card = ttk.LabelFrame(self.container, text="Messaging Configuration", padding=10)
+        self._build_subscription_management(content)
+
+        messaging_card = ttk.LabelFrame(content, text="Messaging Configuration", style="Card.TLabelframe", padding=16)
         messaging_card.pack(fill="x", pady=(10, 0))
 
-        ttk.Label(messaging_card, text="Twilio SID").grid(row=0, column=0, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["twilio_sid"], width=36).grid(
+        ttk.Label(messaging_card, text="Twilio SID", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["twilio_sid"], width=36, style="Field.TEntry").grid(
             row=0, column=1, sticky="w", padx=6, pady=5
         )
-        ttk.Label(messaging_card, text="Twilio Token").grid(row=0, column=2, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["twilio_token"], width=30, show="*").grid(
+        ttk.Label(messaging_card, text="Twilio Token", style="Muted.TLabel").grid(row=0, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["twilio_token"], width=30, show="*", style="Field.TEntry").grid(
             row=0, column=3, sticky="w", padx=6, pady=5
         )
 
-        ttk.Label(messaging_card, text="SMS From").grid(row=1, column=0, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["sms_from"], width=36).grid(
+        ttk.Label(messaging_card, text="SMS From", style="Muted.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["sms_from"], width=36, style="Field.TEntry").grid(
             row=1, column=1, sticky="w", padx=6, pady=5
         )
-        ttk.Label(messaging_card, text="SMS To").grid(row=1, column=2, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["sms_to"], width=30).grid(
+        ttk.Label(messaging_card, text="SMS To", style="Muted.TLabel").grid(row=1, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["sms_to"], width=30, style="Field.TEntry").grid(
             row=1, column=3, sticky="w", padx=6, pady=5
         )
 
-        ttk.Label(messaging_card, text="WhatsApp From").grid(row=2, column=0, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["whatsapp_from"], width=36).grid(
+        ttk.Label(messaging_card, text="WhatsApp From", style="Muted.TLabel").grid(row=2, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["whatsapp_from"], width=36, style="Field.TEntry").grid(
             row=2, column=1, sticky="w", padx=6, pady=5
         )
-        ttk.Label(messaging_card, text="WhatsApp To").grid(row=2, column=2, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["whatsapp_to"], width=30).grid(
+        ttk.Label(messaging_card, text="WhatsApp To", style="Muted.TLabel").grid(row=2, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["whatsapp_to"], width=30, style="Field.TEntry").grid(
             row=2, column=3, sticky="w", padx=6, pady=5
         )
 
-        ttk.Label(messaging_card, text="Telegram Bot Token").grid(row=3, column=0, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["telegram_token"], width=36, show="*").grid(
+        ttk.Label(messaging_card, text="Telegram Bot Token", style="Muted.TLabel").grid(row=3, column=0, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["telegram_token"], width=36, show="*", style="Field.TEntry").grid(
             row=3, column=1, sticky="w", padx=6, pady=5
         )
-        ttk.Label(messaging_card, text="Telegram Chat ID").grid(row=3, column=2, sticky="w", padx=6, pady=5)
-        ttk.Entry(messaging_card, textvariable=self.messaging_vars["telegram_chat_id"], width=30).grid(
+        ttk.Label(messaging_card, text="Telegram Chat ID", style="Muted.TLabel").grid(row=3, column=2, sticky="w", padx=6, pady=5)
+        ttk.Entry(messaging_card, textvariable=self.messaging_vars["telegram_chat_id"], width=30, style="Field.TEntry").grid(
             row=3, column=3, sticky="w", padx=6, pady=5
         )
 
         action_row = ttk.Frame(messaging_card)
         action_row.grid(row=4, column=0, columnspan=4, sticky="w", padx=6, pady=(8, 2))
 
-        ttk.Button(action_row, text="Save Credentials", command=self._save_credentials).pack(side="left", padx=(0, 10))
-        ttk.Button(action_row, text="Check Configuration", command=self.refresh_summary).pack(side="left")
+        ttk.Button(action_row, text="Save Credentials", command=self._save_credentials, style="Success.TButton").pack(side="left", padx=(0, 10))
+        ttk.Button(action_row, text="Check Configuration", command=self.refresh_summary, style="Primary.TButton").pack(side="left")
 
-        self._build_subscription_management()
-
-        ttk.Label(self.container, textvariable=self.status_var).pack(fill="x", pady=(8, 0))
+        ttk.Label(content, textvariable=self.status_var).pack(fill="x", pady=(8, 0))
 
         self.refresh_summary()
 
-    def _build_subscription_management(self) -> None:
-        sub_card = ttk.LabelFrame(self.container, text="User Subscription Management", padding=10)
+    def _build_subscription_management(self, parent: ttk.Frame) -> None:
+        sub_card = ttk.LabelFrame(
+            parent,
+            text="Subscription Management - Renewal / Expired / Active / Start Date / End Date",
+            style="Card.TLabelframe",
+            padding=16,
+        )
         sub_card.pack(fill="both", expand=True, pady=(10, 0))
 
         columns = ("user_id", "username", "start_date", "end_date", "status", "remaining_days")
-        self.subscription_tree = ttk.Treeview(sub_card, columns=columns, show="headings", height=7)
+        self.subscription_tree = ttk.Treeview(sub_card, columns=columns, show="headings", height=7, style="Modern.Treeview")
         self.subscription_tree.pack(fill="x", padx=4, pady=(2, 8))
 
         self.subscription_tree.heading("user_id", text="User ID")
@@ -154,37 +180,38 @@ class AdminTab:
         form = ttk.Frame(sub_card)
         form.pack(fill="x", padx=4, pady=(2, 2))
 
-        ttk.Label(form, text="User").grid(row=0, column=0, sticky="w", padx=6, pady=4)
-        ttk.Entry(form, textvariable=self.selected_username_var, state="readonly", width=22).grid(
+        ttk.Label(form, text="User", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=4)
+        ttk.Entry(form, textvariable=self.selected_username_var, state="readonly", width=22, style="Field.TEntry").grid(
             row=0, column=1, sticky="w", padx=6, pady=4
         )
 
-        ttk.Label(form, text="Start (YYYY-MM-DD)").grid(row=0, column=2, sticky="w", padx=6, pady=4)
-        ttk.Entry(form, textvariable=self.sub_start_var, width=16).grid(row=0, column=3, sticky="w", padx=6, pady=4)
+        ttk.Label(form, text="Start (YYYY-MM-DD)", style="Muted.TLabel").grid(row=0, column=2, sticky="w", padx=6, pady=4)
+        ttk.Entry(form, textvariable=self.sub_start_var, width=16, style="Field.TEntry").grid(row=0, column=3, sticky="w", padx=6, pady=4)
 
-        ttk.Label(form, text="End (YYYY-MM-DD)").grid(row=0, column=4, sticky="w", padx=6, pady=4)
-        ttk.Entry(form, textvariable=self.sub_end_var, width=16).grid(row=0, column=5, sticky="w", padx=6, pady=4)
+        ttk.Label(form, text="End (YYYY-MM-DD)", style="Muted.TLabel").grid(row=0, column=4, sticky="w", padx=6, pady=4)
+        ttk.Entry(form, textvariable=self.sub_end_var, width=16, style="Field.TEntry").grid(row=0, column=5, sticky="w", padx=6, pady=4)
 
-        ttk.Label(form, text="Status").grid(row=1, column=0, sticky="w", padx=6, pady=4)
+        ttk.Label(form, text="Status", style="Muted.TLabel").grid(row=1, column=0, sticky="w", padx=6, pady=4)
         ttk.Combobox(
             form,
             textvariable=self.sub_status_var,
             state="readonly",
             values=("active", "expired"),
             width=19,
+            style="Field.TCombobox",
         ).grid(row=1, column=1, sticky="w", padx=6, pady=4)
 
-        ttk.Label(form, text="Extend Days").grid(row=1, column=2, sticky="w", padx=6, pady=4)
-        ttk.Entry(form, textvariable=self.extend_days_var, width=16).grid(row=1, column=3, sticky="w", padx=6, pady=4)
+        ttk.Label(form, text="Extend Days", style="Muted.TLabel").grid(row=1, column=2, sticky="w", padx=6, pady=4)
+        ttk.Entry(form, textvariable=self.extend_days_var, width=16, style="Field.TEntry").grid(row=1, column=3, sticky="w", padx=6, pady=4)
 
         action_row = ttk.Frame(sub_card)
         action_row.pack(fill="x", padx=4, pady=(6, 2))
 
-        ttk.Button(action_row, text="Refresh Users", command=self.refresh_user_subscriptions).pack(side="left", padx=(0, 8))
-        ttk.Button(action_row, text="Save Dates/Status", command=self.save_subscription_changes).pack(side="left", padx=(0, 8))
-        ttk.Button(action_row, text="Extend Subscription", command=self.extend_subscription).pack(side="left", padx=(0, 8))
-        ttk.Button(action_row, text="Activate User", command=self.activate_user).pack(side="left", padx=(0, 8))
-        ttk.Button(action_row, text="Deactivate User", command=self.deactivate_user).pack(side="left")
+        ttk.Button(action_row, text="Refresh Users", command=self.refresh_user_subscriptions, style="Primary.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(action_row, text="Save Dates/Status", command=self.save_subscription_changes, style="Success.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(action_row, text="Extend Subscription", command=self.extend_subscription, style="Warning.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(action_row, text="Activate User", command=self.activate_user, style="Success.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(action_row, text="Deactivate User", command=self.deactivate_user, style="Danger.TButton").pack(side="left")
 
     def _require_admin_action(self) -> bool:
         if self.is_admin_fn():

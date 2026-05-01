@@ -19,10 +19,10 @@ class ReportTab:
         self.filter_inputs_frame = None
 
     def build(self) -> None:
-        filters = ttk.LabelFrame(self.container, text="Filters", padding=10)
+        filters = ttk.LabelFrame(self.container, text="Filters", style="Card.TLabelframe", padding=16)
         filters.pack(fill="x")
 
-        ttk.Label(filters, text="Filter By").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        ttk.Label(filters, text="Filter By", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=6)
 
         modes = ttk.Frame(filters)
         modes.grid(row=0, column=1, columnspan=3, sticky="w", padx=6, pady=6)
@@ -52,14 +52,14 @@ class ReportTab:
         self.filter_inputs_frame.grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(4, 6))
         self._render_filter_inputs()
 
-        ttk.Button(filters, text="Search", command=self.refresh_table).grid(
+        ttk.Button(filters, text="Search", command=self.refresh_table, style="Primary.TButton").grid(
             row=0, column=4, rowspan=2, sticky="w", padx=(14, 8), pady=6
         )
-        ttk.Button(filters, text="Clear", command=self.clear_filters).grid(
+        ttk.Button(filters, text="Clear", command=self.clear_filters, style="Danger.TButton").grid(
             row=0, column=5, rowspan=2, sticky="w", padx=8, pady=6
         )
 
-        table_card = ttk.LabelFrame(self.container, text="Weighment Records", padding=10)
+        table_card = ttk.LabelFrame(self.container, text="Weighment Records", style="Card.TLabelframe", padding=16)
         table_card.pack(fill="both", expand=True, pady=(10, 0))
 
         columns = (
@@ -88,7 +88,7 @@ class ReportTab:
         table_grid.rowconfigure(0, weight=1)
         table_grid.columnconfigure(0, weight=1)
 
-        self.report_tree = ttk.Treeview(table_grid, columns=columns, show="headings", height=16)
+        self.report_tree = ttk.Treeview(table_grid, columns=columns, show="headings", height=16, style="Modern.Treeview")
 
         self.report_tree.heading("serial_no", text="Serial")
         self.report_tree.heading("vehicle_no", text="Vehicle No")
@@ -157,26 +157,26 @@ class ReportTab:
 
         mode = self.filter_mode_var.get()
         if mode == "vehicle":
-            ttk.Label(self.filter_inputs_frame, text="Vehicle No").grid(row=0, column=0, sticky="w", padx=6, pady=2)
-            ttk.Entry(self.filter_inputs_frame, textvariable=self.vehicle_filter_var, width=34).grid(
+            ttk.Label(self.filter_inputs_frame, text="Vehicle No", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=2)
+            ttk.Entry(self.filter_inputs_frame, textvariable=self.vehicle_filter_var, width=34, style="Field.TEntry").grid(
                 row=0, column=1, sticky="w", padx=6, pady=2
             )
         elif mode == "serial":
-            ttk.Label(self.filter_inputs_frame, text="Serial No").grid(row=0, column=0, sticky="w", padx=6, pady=2)
-            ttk.Entry(self.filter_inputs_frame, textvariable=self.serial_filter_var, width=34).grid(
+            ttk.Label(self.filter_inputs_frame, text="Serial No", style="Muted.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=2)
+            ttk.Entry(self.filter_inputs_frame, textvariable=self.serial_filter_var, width=34, style="Field.TEntry").grid(
                 row=0, column=1, sticky="w", padx=6, pady=2
             )
         else:
-            ttk.Label(self.filter_inputs_frame, text="From (DD-MM-YYYY)").grid(
+            ttk.Label(self.filter_inputs_frame, text="From (DD-MM-YYYY)", style="Muted.TLabel").grid(
                 row=0, column=0, sticky="w", padx=6, pady=2
             )
-            ttk.Entry(self.filter_inputs_frame, textvariable=self.date_from_filter_var, width=18).grid(
+            ttk.Entry(self.filter_inputs_frame, textvariable=self.date_from_filter_var, width=18, style="Field.TEntry").grid(
                 row=0, column=1, sticky="w", padx=6, pady=2
             )
-            ttk.Label(self.filter_inputs_frame, text="To (DD-MM-YYYY)").grid(
+            ttk.Label(self.filter_inputs_frame, text="To (DD-MM-YYYY)", style="Muted.TLabel").grid(
                 row=0, column=2, sticky="w", padx=(12, 6), pady=2
             )
-            ttk.Entry(self.filter_inputs_frame, textvariable=self.date_to_filter_var, width=18).grid(
+            ttk.Entry(self.filter_inputs_frame, textvariable=self.date_to_filter_var, width=18, style="Field.TEntry").grid(
                 row=0, column=3, sticky="w", padx=6, pady=2
             )
 
