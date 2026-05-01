@@ -64,6 +64,35 @@ class AdminTab:
         content.bind("<Configure>", _sync_scrollregion)
         scroll_canvas.bind("<Configure>", _sync_width)
 
+        # Enable mouse wheel scrolling when pointer is over admin content
+        def _on_mousewheel(event):
+            try:
+                if hasattr(event, "num") and event.num in (4, 5):
+                    delta = -1 if event.num == 4 else 1
+                else:
+                    delta = int(-1 * (event.delta / 120)) if event.delta != 0 else 0
+            except Exception:
+                delta = 0
+
+            if delta:
+                scroll_canvas.yview_scroll(delta, "units")
+
+        def _bind_wheel(_e=None):
+            scroll_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            scroll_canvas.bind_all("<Button-4>", _on_mousewheel)
+            scroll_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_wheel(_e=None):
+            try:
+                scroll_canvas.unbind_all("<MouseWheel>")
+                scroll_canvas.unbind_all("<Button-4>")
+                scroll_canvas.unbind_all("<Button-5>")
+            except Exception:
+                pass
+
+        content.bind("<Enter>", _bind_wheel)
+        content.bind("<Leave>", _unbind_wheel)
+
         self.container = content
 
         top_row = ttk.Frame(content, style="App.TFrame")
