@@ -1,5 +1,4 @@
 import os
-import random
 import re
 import sqlite3
 import threading
@@ -15,6 +14,7 @@ import requests
 from PIL import Image, ImageTk
 from admin_tab import AdminTab
 from report_tab import ReportTab
+from settings_tab import SettingsTab
 
 try:
     from twilio.rest import Client
@@ -58,7 +58,7 @@ class WeighmentApp:
 
         self._setup_modern_theme()
 
-        self.current_weight = 0
+        self.current_weight: int | None = None
         self.gross_weight = None
         self.tare_weight = None
         self.net_weight = None
@@ -103,8 +103,14 @@ class WeighmentApp:
         self.telegram_bot_token_var = tk.StringVar(value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
         self.telegram_chat_id_var = tk.StringVar(value=os.getenv("TELEGRAM_CHAT_ID", ""))
         self.message_status_var = tk.StringVar(value="Messaging: Ready")
+        self.serial_status_var = tk.StringVar(value="Port: Not connected")
+        self.serial_port_name: str | None = None
+        self.serial_baud_rate: int | None = None
+        self.serial_connection = None
+        self._serial_reader_stop_event = threading.Event()
+        self._serial_reader_thread: threading.Thread | None = None
 
-        self.live_weight_var = tk.StringVar(value="00000 kg")
+        self.live_weight_var = tk.StringVar(value="Waiting for serial input")
         self.gross_var = tk.StringVar(value="-")
         self.tare_var = tk.StringVar(value="-")
         self.net_var = tk.StringVar(value="-")
@@ -118,7 +124,6 @@ class WeighmentApp:
         self._load_saved_messaging_settings()
         self._show_login_screen()
         self._update_datetime()
-        self.generate_weight()
 
     def _setup_modern_theme(self) -> None:
         style = ttk.Style(self.root)
@@ -157,6 +162,21 @@ class WeighmentApp:
             borderwidth=0,
         )
         style.map("Field.TEntry", fieldbackground=[("focus", self.colors["surface"]), ("!disabled", self.colors["field"])])
+
+        style.configure(
+            "Field.TCombobox",
+            fieldbackground=self.colors["field"],
+            background=self.colors["field"],
+            foreground=self.colors["text"],
+            padding=(8, 8),
+            relief="flat",
+            borderwidth=0,
+        )
+        style.map(
+            "Field.TCombobox",
+            fieldbackground=[("readonly", self.colors["field"]), ("focus", self.colors["surface"])],
+            foreground=[("readonly", self.colors["text"])],
+        )
 
         style.configure("Focused.Field.TEntry", fieldbackground=self.colors["surface"], background=self.colors["surface"], foreground=self.colors["text"])
 
@@ -841,13 +861,16 @@ class WeighmentApp:
         weighment_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
         admin_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
         report_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
+        settings_tab = ttk.Frame(notebook, style="App.TFrame", padding=0)
         self.weighment_frame = weighment_tab
         self.admin_frame = admin_tab
         self.report_frame = report_tab
+        self.settings_frame = settings_tab
 
         notebook.add(weighment_tab, text="Weighment")
         notebook.add(admin_tab, text="Admin")
         notebook.add(report_tab, text="Report")
+        notebook.add(settings_tab, text="Settings")
 
         self._build_weighment_tab(weighment_tab)
         if self.session_role == "admin":
@@ -855,6 +878,7 @@ class WeighmentApp:
         else:
             self._build_admin_locked_tab(admin_tab)
         self._build_report_tab(report_tab)
+        self._build_settings_tab(settings_tab)
 
         if select_admin:
             notebook.select(admin_tab)
@@ -1116,6 +1140,18 @@ class WeighmentApp:
         self.report_tab = ReportTab(container=container, get_db_connection=self._get_db_connection)
         self.report_tab.build()
 
+    def _build_settings_tab(self, container: ttk.Frame) -> None:
+        self.settings_tab = SettingsTab(
+            container=container,
+            list_ports_fn=self._list_available_serial_ports,
+            connect_fn=self._connect_serial_port,
+            disconnect_fn=self._disconnect_serial_port,
+            load_settings_fn=self._load_serial_settings,
+            save_settings_fn=self._save_serial_settings,
+            connection_status_fn=self._serial_connection_status,
+        )
+        self.settings_tab.build()
+
     def refresh_report_table(self) -> None:
         if not hasattr(self, "report_tab"):
             return
@@ -1132,20 +1168,72 @@ class WeighmentApp:
         self._refresh_current_user_subscription_state()
         self.root.after(1000, self._update_datetime)
 
-    def generate_weight(self) -> None:
-        self.current_weight = random.randint(1000, 50000)
-        self.live_weight_var.set(f"{self.current_weight:05d} kg")
-        self.root.after(1000, self.generate_weight)
-
     def capture_gross_weight(self) -> None:
+        if self.current_weight is None:
+            messagebox.showerror("Validation Error", "No live weight reading is available yet.")
+            return
         self.gross_weight = self.current_weight
         self.gross_var.set(f"{self.gross_weight} kg")
         self.calculate_net_weight()
 
     def capture_tare_weight(self) -> None:
+        if self.current_weight is None:
+            messagebox.showerror("Validation Error", "No live weight reading is available yet.")
+            return
         self.tare_weight = self.current_weight
         self.tare_var.set(f"{self.tare_weight} kg")
         self.calculate_net_weight()
+
+    def _parse_serial_weight(self, raw_value: str) -> int | None:
+        match = re.search(r"[-+]?\d+(?:\.\d+)?", raw_value)
+        if not match:
+            return None
+
+        try:
+            return int(round(float(match.group(0))))
+        except ValueError:
+            return None
+
+    def _apply_serial_weight(self, raw_value: str, weight_value: int | None) -> None:
+        self.live_weight_var.set(raw_value if weight_value is None else f"{weight_value:05d} kg")
+        if weight_value is not None:
+            self.current_weight = weight_value
+
+    def _serial_reader_loop(self) -> None:
+        connection = self.serial_connection
+        if connection is None:
+            return
+
+        while not self._serial_reader_stop_event.is_set():
+            try:
+                if not getattr(connection, "is_open", False):
+                    break
+
+                raw_bytes = connection.readline()
+                if not raw_bytes:
+                    continue
+
+                raw_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+                if not raw_text:
+                    continue
+
+                print(f"[SERIAL] {raw_text}", flush=True)
+                parsed_weight = self._parse_serial_weight(raw_text)
+                self.root.after(0, lambda text=raw_text, weight=parsed_weight: self._apply_serial_weight(text, weight))
+            except Exception as exc:
+                print(f"[SERIAL] Read error: {exc}", flush=True)
+                break
+
+    def _start_serial_reader(self) -> None:
+        self._stop_serial_reader()
+        self._serial_reader_stop_event.clear()
+        self._serial_reader_thread = threading.Thread(target=self._serial_reader_loop, daemon=True)
+        self._serial_reader_thread.start()
+
+    def _stop_serial_reader(self) -> None:
+        self._serial_reader_stop_event.set()
+        if self._serial_reader_thread and self._serial_reader_thread.is_alive():
+            self._serial_reader_thread = None
 
     def calculate_net_weight(self) -> None:
         if self.gross_weight is None or self.tare_weight is None:
@@ -1334,6 +1422,96 @@ class WeighmentApp:
         for key, value in rows:
             if key in settings and value:
                 settings[key].set(value)
+
+    def _load_serial_settings(self) -> dict[str, str]:
+        with self._get_db_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('serial_port', 'serial_baud_rate')"
+            )
+            rows = cursor.fetchall()
+
+        return {key: value for key, value in rows}
+
+    def _save_serial_settings(self, serial_port: str, serial_baud_rate: str) -> bool:
+        try:
+            baud_rate = int(serial_baud_rate)
+        except ValueError:
+            self._show_error("Settings Error", "Baud rate must be numeric.")
+            return False
+
+        try:
+            with self._get_db_connection() as connection:
+                cursor = connection.cursor()
+                cursor.executemany(
+                    """
+                    INSERT INTO app_settings (setting_key, setting_value)
+                    VALUES (?, ?)
+                    ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value
+                    """,
+                    [
+                        ("serial_port", serial_port),
+                        ("serial_baud_rate", str(baud_rate)),
+                    ],
+                )
+                connection.commit()
+            return True
+        except Exception as exc:
+            self._show_error("Settings Error", f"Could not save serial settings: {exc}")
+            return False
+
+    def _list_available_serial_ports(self) -> list[str]:
+        try:
+            from serial.tools import list_ports
+        except ImportError:
+            return []
+
+        return [port.device for port in list_ports.comports()]
+
+    def _connect_serial_port(self, port_name: str, baud_rate: int) -> tuple[bool, str]:
+        try:
+            import serial
+        except ImportError:
+            return False, "pyserial is not installed. Install it with: pip install pyserial"
+
+        try:
+            if self.serial_connection and getattr(self.serial_connection, "is_open", False):
+                self.serial_connection.close()
+
+            connection = serial.Serial(port=port_name, baudrate=baud_rate, timeout=1)
+            self.serial_connection = connection
+            self.serial_port_name = port_name
+            self.serial_baud_rate = baud_rate
+            self.serial_status_var.set(f"Port: Connected to {port_name} @ {baud_rate}")
+            self._start_serial_reader()
+            return True, f"Port: Connected to {port_name} @ {baud_rate}"
+        except Exception as exc:
+            self.serial_connection = None
+            self.serial_port_name = None
+            self.serial_baud_rate = None
+            return False, f"Port: Could not open {port_name} - {exc}"
+
+    def _disconnect_serial_port(self) -> str:
+        self._stop_serial_reader()
+        if self.serial_connection is not None:
+            try:
+                if getattr(self.serial_connection, "is_open", False):
+                    self.serial_connection.close()
+            except Exception:
+                pass
+
+        self.serial_connection = None
+        self.serial_port_name = None
+        self.serial_baud_rate = None
+        self.current_weight = None
+        self.live_weight_var.set("Waiting for serial input")
+        self.serial_status_var.set("Port: Not connected")
+        return "Port: Not connected"
+
+    def _serial_connection_status(self) -> str:
+        if self.serial_connection is not None and getattr(self.serial_connection, "is_open", False):
+            return f"Port: Connected to {self.serial_port_name} @ {self.serial_baud_rate}"
+        return ""
 
     def _compose_message(self) -> str:
         self.calculate_net_weight()
